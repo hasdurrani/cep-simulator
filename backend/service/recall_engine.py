@@ -152,6 +152,52 @@ def _resolve_cep_ids(active_ceps: list[str], cep_master_df: pd.DataFrame) -> lis
     return list(set(resolved))
 
 
+def build_brand_similarity(rbc_df: pd.DataFrame) -> dict[tuple[str, str], float]:
+    """
+    Compute pairwise cosine similarity between brands based on their
+    population-level CEP mention rates.
+
+    Returns {(brand_id_a, brand_id_b): cosine_similarity}.
+    Used to make the competition term brand-specific: brands with similar
+    CEP profiles compete more intensely than brands with different profiles.
+    """
+    import numpy as np
+
+    survey_edges = rbc_df[rbc_df["source"] == "survey"] if "source" in rbc_df.columns else rbc_df
+    n_respondents = rbc_df["respondent_id"].nunique()
+
+    mention_counts = (
+        survey_edges
+        .groupby(["brand_id", "cep_id"])["respondent_id"]
+        .nunique()
+        .reset_index(name="n")
+    )
+    mention_counts["rate"] = mention_counts["n"] / n_respondents
+
+    pivot = mention_counts.pivot(index="brand_id", columns="cep_id", values="rate").fillna(0.0)
+    brand_ids = pivot.index.tolist()
+    vectors = pivot.values
+
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    norms = np.where(norms == 0, 1.0, norms)
+    normalized = vectors / norms
+    sim_matrix = normalized @ normalized.T
+
+    result: dict[tuple[str, str], float] = {}
+    for i, a in enumerate(brand_ids):
+        for j, b in enumerate(brand_ids):
+            if i != j:
+                result[(a, b)] = float(np.clip(sim_matrix[i, j], 0.0, 1.0))
+
+    n_pairs = len(result)
+    mean_sim = (float(sim_matrix.sum()) - len(brand_ids)) / max(1, n_pairs)
+    logger.info(
+        "Brand similarity: %d brands, %d pairs, mean sim=%.3f",
+        len(brand_ids), n_pairs, mean_sim,
+    )
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Scenario libraries — one per market, keyed to actual survey CEP stems
 # ---------------------------------------------------------------------------

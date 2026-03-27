@@ -92,7 +92,12 @@ def simulate(request: SimulateRequest):
     try:
         rbc_post, events = apply_ad_to_population(
             sess.respondent_ids, ad, sess.rbc_df, sess.config,
+            responsiveness_map=sess.responsiveness_map,
         )
+        # Design decision: episodic events are archived for analysis only.
+        # Scoring uses rbc_post (updated semantic weights) as the sole source
+        # of ad effect — episodic events are NOT passed to run_scenario_recall
+        # or run_ad_impact, avoiding double-counting of the ad exposure.
         save_episodic_events(events, sess.config)
     except Exception as exc:
         raise HTTPException(500, f"Ad application failed: {exc}")
@@ -106,6 +111,8 @@ def simulate(request: SimulateRequest):
             sess.respondent_ids, scenarios,
             sess.rbc_df, rbc_post,
             sess.cep_master_df, sess.brand_name_map, sess.config,
+            brand_priors=sess.brand_priors,
+            brand_similarity=sess.brand_similarity,
         )
         segment_summary_df = build_segment_summary(ad_impact_df, sess.respondents_df)
     except Exception as exc:

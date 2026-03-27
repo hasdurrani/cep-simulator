@@ -37,6 +37,7 @@ def run_scenario_recall(
     episodic_events: pd.DataFrame | None = None,
     brand_priors: dict[str, float] | None = None,
     cep_brand_priors: dict[tuple, float] | None = None,
+    brand_similarity: dict[tuple[str, str], float] | None = None,
 ) -> pd.DataFrame:
     """
     Run each scenario for all respondents using vectorised pandas operations.
@@ -103,9 +104,31 @@ def run_scenario_recall(
             cross["semantic"] += cross["strength"]
             cross = cross.drop(columns=["strength"])
 
-        # Competition: penalty × sum of other brands' semantic for this respondent
-        total_sem = cross.groupby("respondent_id")["semantic"].transform("sum")
-        cross["competition"] = penalty * (total_sem - cross["semantic"]).clip(lower=0.0)
+        # Competition
+        if brand_similarity is not None:
+            # Brand-specific competition: γ × Σ_{b'≠b} sim(b, b') × semantic(r, b', S)
+            # Brands with similar CEP profiles face stronger mutual competition.
+            brands_here = list(cross["brand_id"].unique())
+            sim_vals = np.array([
+                [brand_similarity.get((a, b), 0.0) for b in brands_here]
+                for a in brands_here
+            ], dtype=float)
+            sem_wide = (
+                cross.pivot(index="respondent_id", columns="brand_id", values="semantic")
+                .fillna(0.0)
+                .reindex(columns=brands_here, fill_value=0.0)
+            )
+            comp_wide = sem_wide.values @ sim_vals.T   # (n_resp × n_brands)
+            comp_df = pd.DataFrame(comp_wide, index=sem_wide.index, columns=brands_here)
+            comp_long = comp_df.stack().reset_index()
+            comp_long.columns = ["respondent_id", "brand_id", "competition"]
+            cross = cross.merge(comp_long, on=["respondent_id", "brand_id"], how="left")
+            cross["competition"] = (penalty * cross["competition"].fillna(0.0)).clip(lower=0.0)
+        else:
+            # Flat competition: γ × (total_semantic − semantic(b))
+            # Note: this term cancels in softmax and only affects raw score interpretability.
+            total_sem = cross.groupby("respondent_id")["semantic"].transform("sum")
+            cross["competition"] = penalty * (total_sem - cross["semantic"]).clip(lower=0.0)
 
         # Base priors — CEP-conditioned preferred, global brand prior as fallback
         if cep_brand_priors is not None:
@@ -185,6 +208,7 @@ def run_ad_impact(
     config: CepSimConfig,
     brand_priors: dict[str, float] | None = None,
     cep_brand_priors: dict[tuple, float] | None = None,
+    brand_similarity: dict[tuple[str, str], float] | None = None,
 ) -> pd.DataFrame:
     """
     Compare recall before and after ad exposure for each respondent × scenario.
@@ -192,10 +216,12 @@ def run_ad_impact(
     pre_df = run_scenario_recall(
         respondent_ids, scenarios, rbc_pre, cep_master_df, brand_name_map, config,
         brand_priors=brand_priors, cep_brand_priors=cep_brand_priors,
+        brand_similarity=brand_similarity,
     )
     post_df = run_scenario_recall(
         respondent_ids, scenarios, rbc_post, cep_master_df, brand_name_map, config,
         brand_priors=brand_priors, cep_brand_priors=cep_brand_priors,
+        brand_similarity=brand_similarity,
     )
 
     pre_df = pre_df.rename(columns={"recall_score": "recall_pre", "rank": "rank_pre"})

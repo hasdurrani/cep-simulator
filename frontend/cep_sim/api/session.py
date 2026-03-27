@@ -21,6 +21,11 @@ class Session:
     brand_name_map: dict[str, str]
     respondent_ids: list[str]
     respondents_df: pd.DataFrame
+    brand_priors: dict | None = None
+    responsiveness_map: dict | None = None
+    brand_similarity: dict | None = None
+    fitted_params: dict | None = None
+    mae: float | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 

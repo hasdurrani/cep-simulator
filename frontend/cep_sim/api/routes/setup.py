@@ -53,6 +53,7 @@ class SetupResponse(BaseModel):
     default_brand_id: str                     # from config [ad] section
     default_focal_cep_ids: list[str]
     default_secondary_cep_ids: list[str]
+    mae: float | None = None
 
 
 @router.get("/configs")
@@ -107,13 +108,56 @@ def setup(request: SetupRequest):
     )
     respondent_ids = respondents_df["respondent_id"].astype(str).tolist()
 
+    brand_priors = responsiveness_map = brand_similarity = fitted_params = mae = None
+
+    # ── Calibration setup: brand priors, responsiveness, similarity ───
+    from backend.service.calibration import (
+        compute_brand_priors, compute_respondent_responsiveness, fit_parameters,
+    )
+    from backend.service.recall_engine import build_brand_similarity
+    from backend.service.validator import run_calibration_check
+
+    brand_priors      = compute_brand_priors(long_df)
+    responsiveness_map = compute_respondent_responsiveness(rbc_df)
+    brand_similarity  = build_brand_similarity(rbc_df)
+
     scenarios = get_scenarios(config.survey.country)
+
+    # Fit softmax temperature and prior weight on a small grid.
+    # γ (competition_penalty_weight) is kept at its config default — it is
+    # currently inert under softmax (cancels out) and will be fitted once the
+    # CEP-similarity competition term is the primary scoring path.
+    fitted_params = None
+    try:
+        fitted_params = fit_parameters(
+            long_df, rbc_df, cep_master_df, scenarios, config, brand_priors,
+            tau_grid=[0.3, 0.7, 1.0, 2.0],
+            gamma_grid=[config.defaults.competition_penalty_weight],
+            prior_weight_grid=[0.5, 1.0, 2.0],
+        )
+        config.defaults.softmax_temperature = fitted_params["tau"]
+        config.defaults.base_prior_weight   = fitted_params["prior_weight"]
+    except Exception as exc:
+        import logging as _log
+        _log.getLogger(__name__).warning("Parameter fitting failed (%s) — using defaults.", exc)
     try:
         scenario_recall_df = run_scenario_recall(
             respondent_ids, scenarios, rbc_df, cep_master_df, brand_name_map, config,
+            brand_priors=brand_priors,
+            brand_similarity=brand_similarity,
         )
     except Exception as exc:
         raise HTTPException(500, f"Baseline recall failed: {exc}")
+
+    # Compute calibration MAE with fitted model
+    mae = None
+    try:
+        cal_df = run_calibration_check(scenario_recall_df, long_df)
+        mae = round(float(cal_df.attrs.get("mae", float("nan"))), 4)
+        if mae != mae:  # nan check
+            mae = None
+    except Exception:
+        pass
 
     # ── Store session ─────────────────────────────────────────────────
     session_id = str(uuid.uuid4())
@@ -129,6 +173,11 @@ def setup(request: SetupRequest):
         brand_name_map=brand_name_map,
         respondent_ids=respondent_ids,
         respondents_df=respondents_df,
+        brand_priors=brand_priors,
+        responsiveness_map=responsiveness_map,
+        brand_similarity=brand_similarity,
+        fitted_params=fitted_params,
+        mae=mae,
     )
     session_store.put(sess)
 
@@ -168,4 +217,5 @@ def setup(request: SetupRequest):
         default_brand_id=default_brand_id,
         default_focal_cep_ids=default_focal,
         default_secondary_cep_ids=default_secondary,
+        mae=mae,
     )
