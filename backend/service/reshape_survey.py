@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from backend.analysis.cep_sim.schemas.config import CepSimConfig
-from backend.analysis.cep_sim.service.codebook_parser import parse_codebook, build_column_map
+from backend.schemas.config import CepSimConfig
+from backend.service.codebook_parser import parse_codebook, build_column_map
 
 logger = logging.getLogger(__name__)
 

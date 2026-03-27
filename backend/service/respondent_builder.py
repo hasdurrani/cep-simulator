@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 import pandas as pd
 from pathlib import Path
 
-from backend.analysis.cep_sim.schemas.config import CepSimConfig
-from backend.analysis.cep_sim.service.utils import brand_to_id
+from backend.schemas.config import CepSimConfig
+from backend.service.utils import brand_to_id
 
 logger = logging.getLogger(__name__)
 

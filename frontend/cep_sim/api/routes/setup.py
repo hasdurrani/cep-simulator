@@ -69,15 +69,15 @@ def setup(request: SetupRequest):
     config_path = PROJECT_ROOT / cfg_meta["path"]
 
     # ── Imports (deferred so startup is fast) ────────────────────────
-    from backend.analysis.cep_sim.schemas.config import load_cep_sim_config
-    from backend.analysis.cep_sim.service.load_data import load_survey
-    from backend.analysis.cep_sim.service.ontology_builder import build_ontology
-    from backend.analysis.cep_sim.service.recall_engine import _resolve_cep_ids, get_scenarios
-    from backend.analysis.cep_sim.service.reshape_survey import reshape_wide_to_long
-    from backend.analysis.cep_sim.service.respondent_builder import (
+    from backend.schemas.config import load_cep_sim_config
+    from backend.service.load_data import load_survey
+    from backend.service.ontology_builder import build_ontology
+    from backend.service.recall_engine import _resolve_cep_ids, get_scenarios
+    from backend.service.reshape_survey import reshape_wide_to_long
+    from backend.service.respondent_builder import (
         build_respondent_brand_cep, build_respondents,
     )
-    from backend.analysis.cep_sim.service.validator import run_scenario_recall
+    from backend.service.validator import run_scenario_recall
     from frontend.cep_sim.api import session as session_store
 
     try:

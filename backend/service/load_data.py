@@ -3,7 +3,7 @@ import logging
 import zipfile
 import io
 import pandas as pd
-from backend.analysis.cep_sim.schemas.config import CepSimConfig
+from backend.schemas.config import CepSimConfig
 
 logger = logging.getLogger(__name__)
 

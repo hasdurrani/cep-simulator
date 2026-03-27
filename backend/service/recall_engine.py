@@ -12,8 +12,8 @@ competition : penalty proportional to the total semantic strength of competing b
 import logging
 import pandas as pd
 
-from backend.analysis.cep_sim.schemas.config import CepSimConfig
-from backend.analysis.cep_sim.service.utils import softmax
+from backend.schemas.config import CepSimConfig
+from backend.service.utils import softmax
 
 logger = logging.getLogger(__name__)
 

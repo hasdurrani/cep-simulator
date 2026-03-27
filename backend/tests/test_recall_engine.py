@@ -7,13 +7,13 @@ run without loading the real survey data.
 import pytest
 import pandas as pd
 
-from backend.analysis.cep_sim.service.recall_engine import (
+from backend.service.recall_engine import (
     get_recall_scores,
     get_recall_probs,
     rank_brands,
     _resolve_cep_ids,
 )
-from backend.analysis.cep_sim.service.utils import softmax
+from backend.service.utils import softmax
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ def rbc_df():
 
 @pytest.fixture
 def config(tmp_path):
-    from backend.analysis.cep_sim.schemas.config import DefaultsConfig, CepSimConfig, SurveyConfig, RecallConfig
+    from backend.schemas.config import DefaultsConfig, CepSimConfig, SurveyConfig, RecallConfig
     # Minimal config with real defaults
     defaults = DefaultsConfig(
         assoc_strength_if_mentioned=1.0,
@@ -61,7 +61,7 @@ def config(tmp_path):
         codebook_file="dummy.txt",
         recall=RecallConfig(cep_blocks=["Q10"]),
     )
-    from backend.analysis.cep_sim.schemas.config import OutputConfig
+    from backend.schemas.config import OutputConfig
     return CepSimConfig(survey=survey, defaults=defaults, output=OutputConfig())
 
 

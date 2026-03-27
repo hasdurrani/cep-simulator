@@ -19,8 +19,8 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from backend.analysis.cep_sim.schemas.config import CepSimConfig
-from backend.analysis.cep_sim.schemas.events import EpisodicEvent
+from backend.schemas.config import CepSimConfig
+from backend.schemas.events import EpisodicEvent
 
 logger = logging.getLogger(__name__)
 

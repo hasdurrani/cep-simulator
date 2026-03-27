@@ -2,9 +2,9 @@ import logging
 import pandas as pd
 from pathlib import Path
 
-from backend.analysis.cep_sim.schemas.config import CepSimConfig
-from backend.analysis.cep_sim.schemas.ontology import CEPNode
-from backend.analysis.cep_sim.service.utils import normalize_cep_text, cep_label_to_id
+from backend.schemas.config import CepSimConfig
+from backend.schemas.ontology import CEPNode
+from backend.service.utils import normalize_cep_text, cep_label_to_id
 
 logger = logging.getLogger(__name__)
 

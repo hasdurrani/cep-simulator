@@ -3,8 +3,8 @@ CEP Simulator — CLI runner.
 
 Usage
 -----
-    python -m backend.analysis.cep_sim.service.runner backend/configs/cep_sim_config_uk.toml
-    python -m backend.analysis.cep_sim.service.runner backend/configs/cep_sim_config_brazil.toml
+    python -m backend.service.runner backend/configs/cep_sim_config_uk.toml
+    python -m backend.service.runner backend/configs/cep_sim_config_brazil.toml
 
 The config TOML must contain an [ad] section (AdConfig).  All outputs are
 written to config.output.outputs_dir and a typed run_manifest.json is produced.
@@ -20,17 +20,17 @@ logger = logging.getLogger(__name__)
 
 
 def run(config_path: str) -> dict:
-    from backend.analysis.cep_sim.schemas.config import load_cep_sim_config
-    from backend.analysis.cep_sim.service.ad_engine import Ad, apply_ad_to_population, save_episodic_events
-    from backend.analysis.cep_sim.service.ontology_builder import build_ontology, save_ontology
-    from backend.analysis.cep_sim.service.load_data import load_survey
-    from backend.analysis.cep_sim.service.output_builder import generate_standard_outputs
-    from backend.analysis.cep_sim.service.recall_engine import get_scenarios, _resolve_cep_ids
-    from backend.analysis.cep_sim.service.reshape_survey import reshape_wide_to_long, save_long_survey
-    from backend.analysis.cep_sim.service.respondent_builder import (
+    from backend.schemas.config import load_cep_sim_config
+    from backend.service.ad_engine import Ad, apply_ad_to_population, save_episodic_events
+    from backend.service.ontology_builder import build_ontology, save_ontology
+    from backend.service.load_data import load_survey
+    from backend.service.output_builder import generate_standard_outputs
+    from backend.service.recall_engine import get_scenarios, _resolve_cep_ids
+    from backend.service.reshape_survey import reshape_wide_to_long, save_long_survey
+    from backend.service.respondent_builder import (
         build_respondents, build_respondent_brand_cep, save_respondent_tables,
     )
-    from backend.analysis.cep_sim.service.validator import (
+    from backend.service.validator import (
         build_segment_summary, run_ad_impact, run_scenario_recall,
     )
 
@@ -182,8 +182,8 @@ def run(config_path: str) -> dict:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python -m backend.analysis.cep_sim.service.runner <config_path>")
-        print("  e.g. python -m backend.analysis.cep_sim.service.runner backend/configs/cep_sim_config_uk.toml")
+        print("Usage: python -m backend.service.runner <config_path>")
+        print("  e.g. python -m backend.service.runner backend/configs/cep_sim_config_uk.toml")
         sys.exit(1)
 
     config_path = sys.argv[1]

@@ -25,13 +25,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from backend.analysis.cep_sim.schemas.config import CepSimConfig
-from backend.analysis.cep_sim.service.plotting import (
+from backend.schemas.config import CepSimConfig
+from backend.service.plotting import (
     plot_calibration_dashboard,
     plot_flight_simulator,
     plot_memory_map_comparison,
 )
-from backend.analysis.cep_sim.service.validator import (
+from backend.service.validator import (
     run_calibration_check,
     run_scenario_diagnostics,
     run_spearman_validity,

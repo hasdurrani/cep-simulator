@@ -16,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 @router.get("/baseline/{session_id}")
 def get_baseline(session_id: str):
     from frontend.cep_sim.api import session as session_store
-    from backend.analysis.cep_sim.service.plotting import (
+    from backend.service.plotting import (
         plot_brand_situation_heatmap,
         plot_brand_leaderboard,
     )

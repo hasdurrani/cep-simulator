@@ -17,8 +17,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from backend.analysis.cep_sim.schemas.config import CepSimConfig
-from backend.analysis.cep_sim.service.utils import brand_to_id
+from backend.schemas.config import CepSimConfig
+from backend.service.utils import brand_to_id
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ def _evaluate(
     cep_brand_priors=None,
 ) -> float:
     """Run one evaluation and return MAE. Modifies config in-place temporarily."""
-    from backend.analysis.cep_sim.service.validator import (
+    from backend.service.validator import (
         run_scenario_recall,
         run_calibration_check,
     )
@@ -233,7 +233,7 @@ def run_holdout_validation(
 
     Returns dict with keys: cal_df, spearman_df, mae, mean_rho.
     """
-    from backend.analysis.cep_sim.service.validator import (
+    from backend.service.validator import (
         run_scenario_recall,
         run_calibration_check,
         run_spearman_validity,
@@ -481,7 +481,7 @@ def run_ablation(
     holdout_fraction  : fraction of respondents to hold out (default 0.2)
     seed              : deterministic split seed (default 42)
     """
-    from backend.analysis.cep_sim.service.validator import (
+    from backend.service.validator import (
         run_scenario_recall,
         run_calibration_check,
         run_spearman_validity,
@@ -548,8 +548,8 @@ def run_ablation(
 
             focal_lift = float("nan")
             if ads is not None and focal_brand_id and focal_scenario:
-                from backend.analysis.cep_sim.service.ad_engine import apply_ad_to_population
-                from backend.analysis.cep_sim.service.validator import run_ad_impact
+                from backend.service.ad_engine import apply_ad_to_population
+                from backend.service.validator import run_ad_impact
                 rbc_post = holdout_rbc.copy()
                 for ad in ads:
                     rbc_post, _ = apply_ad_to_population(
@@ -624,7 +624,7 @@ def tune_softmax_temperature(
     Quick single-parameter temperature grid search (kept for backwards compatibility).
     For joint beta/gamma/tau fitting use fit_parameters() instead.
     """
-    from backend.analysis.cep_sim.service.validator import (
+    from backend.service.validator import (
         run_scenario_recall,
         run_calibration_check,
     )

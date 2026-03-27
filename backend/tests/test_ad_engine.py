@@ -6,8 +6,8 @@ Uses the same synthetic fixture pattern as test_recall_engine.py.
 import pytest
 import pandas as pd
 
-from backend.analysis.cep_sim.service.ad_engine import Ad, apply_ad, apply_ad_to_population
-from backend.analysis.cep_sim.schemas.events import EpisodicEvent
+from backend.service.ad_engine import Ad, apply_ad, apply_ad_to_population
+from backend.schemas.events import EpisodicEvent
 
 
 # ---------------------------------------------------------------------------
@@ -31,7 +31,7 @@ def rbc_df():
 
 @pytest.fixture
 def config():
-    from backend.analysis.cep_sim.schemas.config import (
+    from backend.schemas.config import (
         CepSimConfig, SurveyConfig, RecallConfig, DefaultsConfig, OutputConfig
     )
     defaults = DefaultsConfig(

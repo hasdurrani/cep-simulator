@@ -50,11 +50,11 @@ class SimulateResponse(BaseModel):
 
 @router.post("/simulate", response_model=SimulateResponse)
 def simulate(request: SimulateRequest):
-    from backend.analysis.cep_sim.service.ad_engine import Ad, apply_ad_to_population, save_episodic_events
-    from backend.analysis.cep_sim.service.output_builder import (
+    from backend.service.ad_engine import Ad, apply_ad_to_population, save_episodic_events
+    from backend.service.output_builder import (
         flight_simulator_summary, generate_standard_outputs,
     )
-    from backend.analysis.cep_sim.service.validator import (
+    from backend.service.validator import (
         build_segment_summary, run_ad_impact, run_calibration_check, run_spearman_validity,
     )
     from frontend.cep_sim.api import session as session_store
@@ -98,7 +98,7 @@ def simulate(request: SimulateRequest):
         raise HTTPException(500, f"Ad application failed: {exc}")
 
     # ── Ad impact ────────────────────────────────────────────────────
-    from backend.analysis.cep_sim.service.recall_engine import get_scenarios
+    from backend.service.recall_engine import get_scenarios
     scenarios = get_scenarios(sess.country)
 
     try:
@@ -125,7 +125,7 @@ def simulate(request: SimulateRequest):
     # request.focal_scenario_label is a human-readable CEP label from the UI,
     # not a scenario_name key. Find the first scenario whose active_ceps resolve
     # to overlap with the requested focal CEP IDs.
-    from backend.analysis.cep_sim.service.recall_engine import _resolve_cep_ids
+    from backend.service.recall_engine import _resolve_cep_ids
     focal_scenario = scenarios[0]["scenario_name"] if scenarios else "custom"
     for scenario in scenarios:
         active_ids = _resolve_cep_ids(scenario["active_ceps"], sess.cep_master_df)

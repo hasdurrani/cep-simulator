@@ -22,7 +22,7 @@ env/
 outputs/
 
 # Survey / proprietary data
-backend/analysis/cep_sim/data/
+backend/data/
 
 # macOS
 .DS_Store
@@ -30,3 +30,4 @@ backend/analysis/cep_sim/data/
 # IDE
 .vscode/
 .idea/
+.claude/

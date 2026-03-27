@@ -9,8 +9,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from backend.analysis.cep_sim.schemas.config import CepSimConfig
-from backend.analysis.cep_sim.service.recall_engine import (
+from backend.schemas.config import CepSimConfig
+from backend.service.recall_engine import (
     get_recall_scores,
     get_recall_probs,
     rank_brands,

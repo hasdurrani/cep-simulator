@@ -9,7 +9,7 @@ import math
 import pandas as pd
 import pytest
 
-from backend.analysis.cep_sim.service.calibration import (
+from backend.service.calibration import (
     make_holdout_split,
     compute_brand_priors,
     compute_cep_brand_priors,
@@ -89,7 +89,7 @@ def scenarios():
 
 @pytest.fixture
 def config():
-    from backend.analysis.cep_sim.schemas.config import (
+    from backend.schemas.config import (
         CepSimConfig, SurveyConfig, RecallConfig, DefaultsConfig, OutputConfig,
     )
     defaults = DefaultsConfig(
@@ -231,7 +231,7 @@ def test_ablation_restores_config(long_df, rbc_df_full, cep_master_df, scenarios
 
 
 def test_ablation_with_focal_lift(long_df, rbc_df_full, cep_master_df, scenarios, config):
-    from backend.analysis.cep_sim.service.ad_engine import Ad
+    from backend.service.ad_engine import Ad
     ad = Ad(
         ad_id="test_ad",
         brand_id="brand_heineken",
