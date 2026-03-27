@@ -14,7 +14,7 @@ Where:
 """
 import logging
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import pandas as pd

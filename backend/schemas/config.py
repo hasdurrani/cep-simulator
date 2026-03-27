@@ -38,7 +38,7 @@ class DefaultsConfig(BaseModel):
 
 
 class OutputConfig(BaseModel):
-    processed_dir: str = "backend/analysis/cep_sim/data/processed"
+    processed_dir: str = "backend/data/processed"
     outputs_dir: str = "outputs/cep_sim"
 
 

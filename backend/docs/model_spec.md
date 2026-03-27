@@ -5,6 +5,20 @@
 
 ---
 
+## Theoretical grounding
+
+The concepts underlying this simulator come from the **Ehrenberg-Bass Institute for Marketing Science** (University of South Australia), principally from Byron Sharp's *How Brands Grow* (2010) and subsequent EBI research on mental availability.
+
+Two EBI constructs are central:
+
+**Mental availability** — the probability that a consumer thinks of a brand in buying situations. EBI research establishes that mental availability is the primary driver of market share, and that it is built by creating and refreshing brand-relevant memory structures across a wide range of purchase occasions.
+
+**Category Entry Points (CEPs)** — the situational, social, and emotional cues that trigger category and brand retrieval at the moment of purchase. EBI research shows that brands with strong and broad CEP associations are recalled more often and by more buyers. The goal of advertising, on this view, is to create and reinforce links between the brand and the CEPs that matter in the category.
+
+**What this simulator adds**: EBI's framework is primarily empirical and descriptive. This simulator provides a mathematical operationalisation of that framework — a quantitative model of how CEP-linked memory structures are initialised from survey data, how they produce recall probabilities, and how advertising updates them. The mathematical choices (scoring function, softmax, weight update rule) are the author's formalisation, not EBI-published models.
+
+---
+
 ## What this model predicts
 
 This model predicts **relative brand accessibility under a CEP cue** — given that a consumer is at a specific purchase occasion, how likely are they to think of brand B before brand B′?
@@ -187,14 +201,14 @@ This means the model currently double-counts ad impact: once through the updated
 
 ### 3.3 Assumptions and limitations
 
-**No upper bound:**
-Weights grow without limit under repeated exposures. There is no saturation. In practice, mental association strength has diminishing returns and an effective ceiling. A saturating update would be:
+**Saturation (implemented):**
+The update rule includes a saturation factor to prevent unbounded weight growth:
 
 ```
 w_new = w_old + Δ · (1 − w_old / w_max)
 ```
 
-This keeps weights in [0, w_max] and naturally models wear-in/wear-out.
+This keeps weights in [0, w_max] and models diminishing returns on repeated exposures. `w_max` is set in config (default: 5.0). As `w_old` approaches `w_max`, additional ad exposures have progressively less effect — consistent with the empirical wear-in/wear-out pattern observed in advertising research.
 
 **No decay:**
 The model has no time dimension. An ad seen today has the same effect as one seen six months ago. For a longitudinal simulator, a decay factor `ρ ∈ (0, 1)` should be applied at each time step:
@@ -322,5 +336,5 @@ The specification above identifies concrete gaps. In priority order:
 3. **Fix double-count risk (§3.2)** — decide whether episodic events are additive to weight updates or a replacement. Document the choice.
 4. **Scale initial weights by CEP breadth (§1.4)** — stronger initialisation, one change in `respondent_builder.py`.
 5. **Fit β and γ to observed mention rates (§5)** — simple grid search on calibration MAE. Makes the model defensible.
-6. **Add saturation to update rule (§3.3)** — one-line change, prevents unbounded weight growth.
+6. ~~**Add saturation to update rule (§3.3)**~~ — done (implemented in `ad_engine.py`).
 7. **Hold-out validation (§4.5)** — 80/20 respondent split for held-out calibration and construct-validity.

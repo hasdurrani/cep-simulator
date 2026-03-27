@@ -6,9 +6,22 @@ Built with FastAPI + vanilla React. No build step required.
 
 ---
 
+## Theoretical grounding
+
+This tool is built on the **mental availability** framework from the Ehrenberg-Bass Institute for Marketing Science (Byron Sharp, *How Brands Grow*, 2010).
+
+Two EBI concepts are central:
+
+- **Mental availability** — the probability that a buyer thinks of a brand in buying situations. EBI research establishes this as the primary driver of market share, built by creating and refreshing brand-relevant memory structures across a wide range of purchase occasions.
+- **Category Entry Points (CEPs)** — the situational, social, and emotional cues that trigger category and brand retrieval at the moment of purchase. Brands with strong, broad CEP associations are recalled more often and by more buyers.
+
+The mathematical model (scoring function, weight update rule, softmax) is a quantitative operationalisation of that framework — a formalisation authored here, not published by EBI.
+
+---
+
 ## What it does
 
-Advertising works (in part) by strengthening the mental link between a brand and the situations in which people buy. This simulator makes that effect concrete and measurable.
+Advertising works by strengthening the mental link between a brand and the situations in which people buy. This simulator makes that effect concrete and measurable.
 
 Given real survey data on which brands consumers associate with which purchase occasions, the tool lets you:
 
