@@ -66,7 +66,7 @@ from backend.service.load_data import load_survey
 from backend.service.reshape_survey import reshape_wide_to_long
 from backend.service.ontology_builder import build_ontology
 from backend.service.respondent_builder import build_respondents, build_respondent_brand_cep
-from backend.service.recall_engine import get_recall_probs, rank_brands, SCENARIOS
+from backend.service.recall_engine import get_recall_probs, rank_brands, get_scenarios
 from backend.service.ad_engine import Ad, apply_ad_to_population
 from backend.service.validator import run_scenario_recall, run_ad_impact, run_calibration_check
 
@@ -82,7 +82,8 @@ brand_name_map  = rbc_df[["brand_id","brand_name"]].drop_duplicates().set_index(
 respondent_ids  = respondents_df["respondent_id"].astype(str).tolist()
 
 # Baseline recall across all scenarios
-scenario_recall_df = run_scenario_recall(respondent_ids, SCENARIOS, rbc_df, cep_master_df, brand_name_map, config)
+scenarios = get_scenarios(config.survey.country)
+scenario_recall_df = run_scenario_recall(respondent_ids, scenarios, rbc_df, cep_master_df, brand_name_map, config)
 
 # Calibration: predicted recall prob vs. observed mention rate
 cal_df = run_calibration_check(scenario_recall_df, long_df)

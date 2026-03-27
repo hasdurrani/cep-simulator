@@ -88,19 +88,16 @@ def _precompute_scenario_frames(
     brand_priors: dict[str, float],
     long_df: pd.DataFrame,
     brand_similarity: dict[tuple[str, str], float] | None = None,
-) -> tuple[list[dict], np.ndarray]:
+) -> list[dict]:
     """
     Precompute per-scenario numpy matrices for fast grid search.
 
-    Returns (frames, obs_by_brand) where:
-      frames      — list of dicts with keys: semantic, comp, prior, brand_ids
-      obs_by_brand — ordered array of observed mention rates (matches a global brand list)
-
-    Each frame has:
-      semantic [n_resp, n_brands_s] — assoc_strength sums for active CEPs
-      comp     [n_resp, n_brands_s] — pre-computed competition matrix
-      prior    [n_brands_s]         — brand prior values (raw, before pw scaling)
-      brand_ids list[str]           — ordered brand_id list for this scenario
+    Returns a list of frame dicts, one per scenario, each with keys:
+      semantic  [n_resp, n_brands_s] — assoc_strength sums for active CEPs
+      comp      [n_resp, n_brands_s] — pre-computed competition matrix
+      prior     [n_brands_s]         — brand prior values (raw, before pw scaling)
+      obs       [n_brands_s]         — observed mention rates (for MAE computation)
+      brand_ids list[str]            — ordered brand_id list for this scenario
     """
     from backend.service.recall_engine import _resolve_cep_ids
 
