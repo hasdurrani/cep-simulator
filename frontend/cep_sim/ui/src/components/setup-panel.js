@@ -68,7 +68,7 @@ export function SetupPanel({ onSetupComplete }) {
               : "Load Market Data →"}
           </button>
 
-          <p class="mt-3 text-center text-xs text-slate-500">Loads survey data and computes baseline recall (~8s)</p>
+          <p class="mt-3 text-center text-xs text-slate-500">Loads survey data and computes baseline recall</p>
         </div>
 
       </div>

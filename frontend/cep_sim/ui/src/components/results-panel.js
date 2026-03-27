@@ -309,7 +309,6 @@ function SimulateTab({ result }) {
   const metrics        = result.metrics || {};
   const artifactBase   = result.artifact_base_url || `/api/artifacts/${sessionId}`;
   const charts         = result.plotly_charts || {};
-  console.log("[CEP Sim] plotly_charts keys:", Object.keys(charts), "| Plotly available:", !!window.Plotly);
 
   const lift      = metrics.focal_brand_lift;
   const liftStr   = lift != null ? `${lift >= 0 ? "+" : ""}${(lift * 100).toFixed(2)}pp` : "—";
@@ -405,7 +404,206 @@ function SimulateTab({ result }) {
   `;
 }
 
-// ── Top-level ResultsPanel with Market / Simulate tabs ────────────────────
+// ── Mini ad config (used inside CompareTab) ───────────────────────────────
+
+function MiniAdConfig({ label, color, session, spec, onChange }) {
+  const { brandId, focalIds, secondaryIds, brandingClarity } = spec;
+
+  function setField(key, val) {
+    onChange({ ...spec, [key]: val });
+  }
+
+  function toggleFocal(cepId) {
+    const next = focalIds.includes(cepId)
+      ? focalIds.filter(x => x !== cepId)
+      : [...focalIds, cepId];
+    onChange({ ...spec, focalIds: next, secondaryIds: secondaryIds.filter(x => x !== cepId) });
+  }
+
+  function toggleSecondary(cepId) {
+    const next = secondaryIds.includes(cepId)
+      ? secondaryIds.filter(x => x !== cepId)
+      : [...secondaryIds, cepId];
+    onChange({ ...spec, secondaryIds: next, focalIds: focalIds.filter(x => x !== cepId) });
+  }
+
+  const borderColor = color === "a" ? "border-cyan-500/40" : "border-orange-500/40";
+  const badgeColor  = color === "a" ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/30" : "bg-orange-500/20 text-orange-400 border-orange-500/30";
+
+  return html`
+    <div class="flex flex-col gap-3 p-4 rounded-xl border ${borderColor} bg-slate-900/60">
+      <div class="flex items-center gap-2">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${badgeColor}">${label}</span>
+        <span class="text-xs font-semibold text-slate-300">Ad ${label}</span>
+      </div>
+
+      <!-- Brand -->
+      <select
+        value=${brandId}
+        onChange=${e => setField("brandId", e.target.value)}
+        class="w-full px-3 py-2 rounded-lg text-xs">
+        ${session.brands.map(b => html`
+          <option key=${b.brand_id} value=${b.brand_id}>${b.brand_name}</option>
+        `)}
+      </select>
+
+      <!-- CEP picker (scrollable) -->
+      <div class="overflow-y-auto pr-1 text-xs" style=${{ maxHeight: "28vh" }}>
+        <div class="flex gap-3 text-[10px] text-slate-500 mb-1.5">
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded ${color === "a" ? "bg-cyan-400" : "bg-orange-400"} inline-block"></span>Primary</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-blue-500 inline-block"></span>Secondary</span>
+        </div>
+        ${Object.entries(session.cep_families).map(([family, ceps]) => html`
+          <div key=${family} class="mb-2">
+            <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">${family}</div>
+            <div class="space-y-0.5">
+              ${ceps.map(cep => {
+                const isFocal     = focalIds.includes(cep.cep_id);
+                const isSecondary = secondaryIds.includes(cep.cep_id);
+                return html`
+                  <div key=${cep.cep_id}
+                    class="flex items-center gap-1.5 px-1.5 py-1 rounded text-[11px] ${isFocal ? (color === "a" ? "bg-cyan-500/15 border border-cyan-500/30" : "bg-orange-500/15 border border-orange-500/30") : isSecondary ? 'bg-blue-500/10 border border-blue-500/30' : 'hover:bg-slate-700/40'}">
+                    <div class="flex-1 text-slate-300 leading-tight">${cep.cep_description}</div>
+                    <div class="flex gap-0.5 shrink-0">
+                      <button onClick=${() => toggleFocal(cep.cep_id)}
+                        class="px-1.5 py-0.5 rounded text-[9px] font-medium ${isFocal ? (color === "a" ? "bg-cyan-500 text-slate-900" : "bg-orange-500 text-slate-900") : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}">P</button>
+                      <button onClick=${() => toggleSecondary(cep.cep_id)}
+                        class="px-1.5 py-0.5 rounded text-[9px] font-medium ${isSecondary ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}">S</button>
+                    </div>
+                  </div>
+                `;
+              })}
+            </div>
+          </div>
+        `)}
+      </div>
+
+      <!-- Branding clarity -->
+      <div>
+        <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+          <span>Branding clarity</span>
+          <span class="text-slate-300 font-medium">${brandingClarity.toFixed(2)}</span>
+        </div>
+        <input type="range" min="0.1" max="1" step="0.05"
+          value=${brandingClarity}
+          onInput=${e => setField("brandingClarity", parseFloat(e.target.value))}
+          class="w-full" />
+      </div>
+    </div>
+  `;
+}
+
+// ── Compare tab ────────────────────────────────────────────────────────────
+
+function CompareTab({ session }) {
+  const defaultSpec = () => ({
+    brandId:        session.default_brand_id,
+    focalIds:       session.default_focal_cep_ids || [],
+    secondaryIds:   session.default_secondary_cep_ids || [],
+    brandingClarity: 0.9,
+  });
+
+  const [specA,   setSpecA]   = useState(defaultSpec());
+  const [specB,   setSpecB]   = useState(defaultSpec());
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState(null);
+  const [result,  setResult]  = useState(null);
+
+  const canRun = specA.focalIds.length > 0 && specB.focalIds.length > 0;
+
+  async function handleCompare() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.compare({
+        session_id: session.session_id,
+        ad_a: {
+          brand_id:          specA.brandId,
+          focal_cep_ids:     specA.focalIds,
+          secondary_cep_ids: specA.secondaryIds,
+          branding_clarity:  specA.brandingClarity,
+        },
+        ad_b: {
+          brand_id:          specB.brandId,
+          focal_cep_ids:     specB.focalIds,
+          secondary_cep_ids: specB.secondaryIds,
+          branding_clarity:  specB.brandingClarity,
+        },
+      });
+      setResult(res);
+    } catch (e) {
+      setError(e.message || "Compare failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return html`
+    <div class="flex flex-col gap-5">
+
+      <!-- Two mini configs -->
+      <div class="grid grid-cols-2 gap-4">
+        <${MiniAdConfig}
+          label="A" color="a"
+          session=${session}
+          spec=${specA}
+          onChange=${setSpecA}
+        />
+        <${MiniAdConfig}
+          label="B" color="b"
+          session=${session}
+          spec=${specB}
+          onChange=${setSpecB}
+        />
+      </div>
+
+      <!-- Run button -->
+      <button
+        onClick=${handleCompare}
+        disabled=${loading || !canRun}
+        class="w-full py-3 rounded-xl font-semibold text-sm transition-all ${loading || !canRun ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-brand-500 hover:bg-brand-600 text-slate-900'}">
+        ${loading
+          ? html`<span class="flex items-center justify-center gap-2"><span class="spinner"></span>Comparing…</span>`
+          : "⇄  Compare A vs B"}
+      </button>
+
+      ${error && html`
+        <div class="p-3 bg-red-900/40 border border-red-700 rounded-lg text-red-300 text-sm font-mono">${error}</div>
+      `}
+
+      <!-- Results -->
+      ${result && html`
+        <div class="flex flex-col gap-4">
+
+          <!-- Comparison chart -->
+          <${PlotlyChart} spec=${result.compare_chart} />
+
+          <!-- Side-by-side tables -->
+          <div class="grid grid-cols-2 gap-4">
+
+            <div>
+              <h3 class="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-2">
+                Ad A · ${result.ad_a_brand_name}
+              </h3>
+              <${FlightTable} rows=${result.ad_a_table} />
+            </div>
+
+            <div>
+              <h3 class="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-2">
+                Ad B · ${result.ad_b_brand_name}
+              </h3>
+              <${FlightTable} rows=${result.ad_b_table} />
+            </div>
+
+          </div>
+        </div>
+      `}
+
+    </div>
+  `;
+}
+
+// ── Top-level ResultsPanel with Market / Simulate / Compare tabs ───────────
 
 export function ResultsPanel({ result, session }) {
   const [topTab, setTopTab] = useState("market");
@@ -419,7 +617,7 @@ export function ResultsPanel({ result, session }) {
     <div class="flex flex-col h-full">
 
       <!-- Top-level tab bar -->
-      <div class="flex border-b border-slate-700 mb-4">
+      <div class="flex items-center border-b border-slate-700 mb-4">
         <button
           onClick=${() => setTopTab("market")}
           class="px-4 py-2 text-sm font-medium transition-all ${topTab === "market" ? 'tab-active' : 'text-slate-500 hover:text-slate-300'}">
@@ -430,12 +628,26 @@ export function ResultsPanel({ result, session }) {
           class="px-4 py-2 text-sm font-medium transition-all ${topTab === "simulate" ? 'tab-active' : 'text-slate-500 hover:text-slate-300'}">
           Simulate
         </button>
+        <button
+          onClick=${() => setTopTab("compare")}
+          class="px-4 py-2 text-sm font-medium transition-all ${topTab === "compare" ? 'tab-active' : 'text-slate-500 hover:text-slate-300'}">
+          Compare A vs B
+        </button>
+        <div class="ml-auto">
+          <a
+            href=${api.exportUrl(session.session_id)}
+            download
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-700/60 transition-all border border-slate-700 hover:border-slate-600">
+            ↓ Export CSV
+          </a>
+        </div>
       </div>
 
       <!-- Tab content -->
       <div class="flex-1 overflow-auto">
-        ${topTab === "market" ? html`<${MarketTab} session=${session} />` : null}
+        ${topTab === "market"   ? html`<${MarketTab}   session=${session} />` : null}
         ${topTab === "simulate" ? html`<${SimulateTab} result=${result} />` : null}
+        ${topTab === "compare"  ? html`<${CompareTab}  session=${session} />` : null}
       </div>
 
     </div>

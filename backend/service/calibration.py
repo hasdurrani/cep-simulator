@@ -80,36 +80,136 @@ def compute_brand_priors(long_df: pd.DataFrame) -> dict[str, float]:
     return priors
 
 
-def _evaluate(
+def _precompute_scenario_frames(
+    rbc_df: pd.DataFrame,
+    cep_master_df: pd.DataFrame,
+    scenarios: list[dict],
+    respondent_ids: list[str],
+    brand_priors: dict[str, float],
+    long_df: pd.DataFrame,
+    brand_similarity: dict[tuple[str, str], float] | None = None,
+) -> tuple[list[dict], np.ndarray]:
+    """
+    Precompute per-scenario numpy matrices for fast grid search.
+
+    Returns (frames, obs_by_brand) where:
+      frames      — list of dicts with keys: semantic, comp, prior, brand_ids
+      obs_by_brand — ordered array of observed mention rates (matches a global brand list)
+
+    Each frame has:
+      semantic [n_resp, n_brands_s] — assoc_strength sums for active CEPs
+      comp     [n_resp, n_brands_s] — pre-computed competition matrix
+      prior    [n_brands_s]         — brand prior values (raw, before pw scaling)
+      brand_ids list[str]           — ordered brand_id list for this scenario
+    """
+    from backend.service.recall_engine import _resolve_cep_ids
+
+    r_frame = pd.DataFrame({"respondent_id": respondent_ids})
+    resp_order = {r: i for i, r in enumerate(respondent_ids)}
+
+    # Observed mention rates by brand_name (for MAE computation)
+    obs_by_name = long_df.groupby("brand_name")["mentioned"].mean().to_dict()
+
+    # brand_id → brand_name from rbc_df
+    bid_to_name = (
+        rbc_df[["brand_id", "brand_name"]].drop_duplicates()
+        .set_index("brand_id")["brand_name"].to_dict()
+    )
+
+    frames: list[dict] = []
+
+    for scenario in scenarios:
+        active_cep_ids = _resolve_cep_ids(scenario["active_ceps"], cep_master_df)
+        if not active_cep_ids:
+            continue
+
+        active = rbc_df[rbc_df["cep_id"].isin(active_cep_ids)]
+        brand_ids = list(active["brand_id"].unique())
+        if not brand_ids:
+            continue
+
+        # Semantic: sum assoc_strength per (respondent, brand) for active CEPs
+        sem_agg = (
+            active.groupby(["respondent_id", "brand_id"])["assoc_strength"]
+            .sum().reset_index()
+        )
+
+        # Pivot to [n_resp × n_brands] numpy matrix (fast path via reindex)
+        b_frame = pd.DataFrame({"brand_id": brand_ids})
+        cross = r_frame.merge(b_frame, how="cross")
+        cross = cross.merge(sem_agg, on=["respondent_id", "brand_id"], how="left")
+        cross["assoc_strength"] = cross["assoc_strength"].fillna(0.0)
+
+        sem_wide = (
+            cross.pivot(index="respondent_id", columns="brand_id", values="assoc_strength")
+            .fillna(0.0)
+            .reindex(index=respondent_ids, columns=brand_ids, fill_value=0.0)
+        )
+        sem_matrix = sem_wide.values.astype(np.float32)   # [n_resp, n_brands]
+
+        # Competition matrix
+        if brand_similarity is not None:
+            sim_vals = np.array(
+                [[brand_similarity.get((a, b), 0.0) for b in brand_ids] for a in brand_ids],
+                dtype=np.float32,
+            )
+            comp_matrix = sem_matrix @ sim_vals.T          # [n_resp, n_brands]
+        else:
+            # Flat competition (cancels in softmax — γ will have no effect)
+            total_sem = sem_matrix.sum(axis=1, keepdims=True)
+            comp_matrix = (total_sem - sem_matrix).astype(np.float32)
+
+        # Per-brand prior and observed rate arrays (aligned to brand_ids order)
+        prior_arr = np.array([brand_priors.get(bid, 0.0) for bid in brand_ids], dtype=np.float32)
+        obs_arr   = np.array(
+            [obs_by_name.get(bid_to_name.get(bid, ""), 0.0) for bid in brand_ids],
+            dtype=np.float32,
+        )
+
+        frames.append({
+            "semantic":  sem_matrix,
+            "comp":      comp_matrix,
+            "prior":     prior_arr,
+            "obs":       obs_arr,
+            "brand_ids": brand_ids,
+        })
+
+    return frames
+
+
+def _fast_grid_mae(
+    frames: list[dict],
+    base: float,
     tau: float,
     gamma: float,
     prior_weight: float,
-    long_df_train: pd.DataFrame,
-    rbc_df_train: pd.DataFrame,
-    cep_master_df: pd.DataFrame,
-    scenarios: list[dict],
-    config: CepSimConfig,
-    brand_priors: dict[str, float],
-    train_ids: list[str],
-    brand_name_map: dict[str, str],
-    cep_brand_priors=None,
 ) -> float:
-    """Run one evaluation and return MAE. Modifies config in-place temporarily."""
-    from backend.service.validator import (
-        run_scenario_recall,
-        run_calibration_check,
-    )
-    config.defaults.softmax_temperature = tau
-    config.defaults.competition_penalty_weight = gamma
-    config.defaults.base_prior_weight = prior_weight
+    """
+    Compute calibration MAE for one (τ, γ, prior_weight) combination.
 
-    recall_df = run_scenario_recall(
-        train_ids, scenarios, rbc_df_train, cep_master_df,
-        brand_name_map, config, brand_priors=brand_priors,
-        cep_brand_priors=cep_brand_priors,
-    )
-    cal = run_calibration_check(recall_df, long_df_train)
-    return float(cal.attrs["mae"])
+    Uses precomputed per-scenario numpy matrices — no pandas in the hot loop.
+    MAE is averaged across all (scenario, brand) pairs.
+    """
+    total_ae = 0.0
+    count = 0
+    for sf in frames:
+        sem   = sf["semantic"]   # [n_resp, n_brands]
+        comp  = sf["comp"]       # [n_resp, n_brands]
+        prior = sf["prior"]      # [n_brands]
+        obs   = sf["obs"]        # [n_brands]
+
+        score = sem + prior_weight * prior[np.newaxis, :] + base - gamma * comp
+        # Numerically stable softmax per respondent
+        s = score / tau
+        s -= s.max(axis=1, keepdims=True)
+        exp_s = np.exp(s)
+        probs = exp_s / exp_s.sum(axis=1, keepdims=True)   # [n_resp, n_brands]
+
+        pred_mean = probs.mean(axis=0)                      # [n_brands]
+        total_ae += float(np.abs(pred_mean - obs).mean())
+        count += 1
+
+    return total_ae / count if count else float("nan")
 
 
 def fit_parameters(
@@ -123,10 +223,14 @@ def fit_parameters(
     gamma_grid: list[float] | None = None,
     prior_weight_grid: list[float] | None = None,
     cep_brand_priors: dict[tuple, float] | None = None,
+    brand_similarity: dict[tuple[str, str], float] | None = None,
 ) -> dict:
     """
     Joint grid search over softmax temperature (τ), competition weight (γ),
     and brand-prior scalar (β_scale) to minimise calibration MAE on training data.
+
+    Uses a fast numpy path: semantics and competition matrices are precomputed once
+    per scenario, then the grid loop only does softmax + MAE (no pandas per iteration).
 
     Two-pass: coarse grid → fine grid around best coarse result.
     Restores original config values after search.
@@ -137,68 +241,69 @@ def fit_parameters(
     orig_gamma = config.defaults.competition_penalty_weight
     orig_pw    = config.defaults.base_prior_weight
 
-    tau_grid   = tau_grid   or [0.05, 0.1, 0.2, 0.5, 1.0, 2.0]
+    tau_grid = tau_grid   or [0.05, 0.1, 0.2, 0.5, 1.0, 2.0]
     gamma_grid = gamma_grid or [0.0, 0.1, 0.3, 1.0]
-    pw_grid    = prior_weight_grid or [0.0, 1.0, 3.0, 5.0]
+    pw_grid  = prior_weight_grid or [0.0, 1.0, 3.0, 5.0]
 
-    train_ids = rbc_df_train["respondent_id"].unique().tolist()
-    brand_name_map = (
-        rbc_df_train[["brand_id", "brand_name"]].drop_duplicates()
-        .set_index("brand_id")["brand_name"].to_dict()
+    train_ids = rbc_df_train["respondent_id"].astype(str).unique().tolist()
+    base      = config.defaults.base_usage_default
+
+    n_total = len(tau_grid) * len(gamma_grid) * len(pw_grid)
+    logger.info(
+        "Fitting parameters: %d combinations (fast numpy path, %s brand_similarity) ...",
+        n_total, "with" if brand_similarity else "without",
     )
 
-    rows = []
-    n_total = len(tau_grid) * len(gamma_grid) * len(pw_grid)
-    logger.info("Fitting parameters: %d combinations ...", n_total)
+    # ── Precompute per-scenario matrices once ─────────────────────────────
+    frames = _precompute_scenario_frames(
+        rbc_df_train, cep_master_df, scenarios, train_ids,
+        brand_priors, long_df_train, brand_similarity=brand_similarity,
+    )
 
+    # ── Coarse grid search ────────────────────────────────────────────────
+    rows = []
     for tau in tau_grid:
         for gamma in gamma_grid:
             for pw in pw_grid:
-                mae = _evaluate(
-                    tau, gamma, pw,
-                    long_df_train, rbc_df_train, cep_master_df,
-                    scenarios, config, brand_priors, train_ids, brand_name_map,
-                    cep_brand_priors=cep_brand_priors,
-                )
+                mae = _fast_grid_mae(frames, base, tau, gamma, pw)
                 rows.append({"tau": tau, "gamma": gamma, "prior_weight": pw, "mae": round(mae, 6)})
 
     grid_df = pd.DataFrame(rows).sort_values("mae").reset_index(drop=True)
     best = grid_df.iloc[0]
 
-    # Fine grid around best coarse result
+    # ── Fine grid around best coarse result ───────────────────────────────
     def _neighbours(v, grid):
         idx = grid.index(v) if v in grid else 0
         lo = grid[max(0, idx - 1)]
         hi = grid[min(len(grid) - 1, idx + 1)]
         return sorted(set([lo, v, hi, (lo + v) / 2, (v + hi) / 2]))
 
-    tau_fine   = _neighbours(best["tau"],          tau_grid)
-    gamma_fine = _neighbours(best["gamma"],        gamma_grid)
-    pw_fine    = _neighbours(best["prior_weight"], pw_grid)
+    tau_fine   = _neighbours(float(best["tau"]),          tau_grid)
+    gamma_fine = _neighbours(float(best["gamma"]),        gamma_grid)
+    pw_fine    = _neighbours(float(best["prior_weight"]), pw_grid)
 
     fine_rows = []
     for tau in tau_fine:
         for gamma in gamma_fine:
             for pw in pw_fine:
-                mae = _evaluate(
-                    tau, gamma, pw,
-                    long_df_train, rbc_df_train, cep_master_df,
-                    scenarios, config, brand_priors, train_ids, brand_name_map,
-                    cep_brand_priors=cep_brand_priors,
-                )
+                mae = _fast_grid_mae(frames, base, tau, gamma, pw)
                 fine_rows.append({"tau": tau, "gamma": gamma, "prior_weight": pw, "mae": round(mae, 6)})
 
     all_df = pd.concat([grid_df, pd.DataFrame(fine_rows)], ignore_index=True)
-    all_df = all_df.sort_values("mae").drop_duplicates(subset=["tau","gamma","prior_weight"]).reset_index(drop=True)
+    all_df = (
+        all_df.sort_values("mae")
+        .drop_duplicates(subset=["tau", "gamma", "prior_weight"])
+        .reset_index(drop=True)
+    )
 
-    best_row = all_df.iloc[0]
+    best_row  = all_df.iloc[0]
     best_tau   = float(best_row["tau"])
     best_gamma = float(best_row["gamma"])
     best_pw    = float(best_row["prior_weight"])
     best_mae   = float(best_row["mae"])
 
     # Restore original config
-    config.defaults.softmax_temperature       = orig_tau
+    config.defaults.softmax_temperature        = orig_tau
     config.defaults.competition_penalty_weight = orig_gamma
     config.defaults.base_prior_weight          = orig_pw
 

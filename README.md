@@ -77,7 +77,12 @@ On first load, pick a market (UK or Brazil). This triggers `/api/setup`, which:
 
 - Loads and reshapes the survey data
 - Builds the CEP ontology (deduplication + family grouping)
-- Initialises the memory model for every respondent × brand × CEP triple
+- Initialises the memory model for every respondent × brand × CEP triple, with initial weights breadth-scaled by each respondent's CEP coverage
+- Computes awareness-weighted brand priors from population-level survey mention rates
+- Computes per-respondent responsiveness multipliers (how open each respondent is to new associations)
+- Builds a brand-similarity matrix from pairwise CEP-profile cosine similarities
+- Fits τ (softmax temperature), γ (competition weight), and prior_weight jointly via grid search to minimise calibration MAE
+- Runs an 80/20 hold-out validation and stores held-out MAE and Spearman ρ
 - Computes baseline recall across all purchase occasion scenarios
 
 ### Step 2 — Explore the Market tab
@@ -87,8 +92,10 @@ The **Market** tab shows the baseline state of the category before any ad is app
 | Element | What it shows |
 |---|---|
 | **Respondents / Brands / Scenarios** | Summary counts for the loaded dataset |
-| **MAE** | Mean absolute error between the model's predicted recall probabilities and the observed survey mention rates — a measure of how well the model fits the data |
+| **MAE** | Mean absolute error between the model's predicted recall probabilities and the observed survey mention rates — a measure of how well the fitted model matches the data |
+| **Hold-out MAE / ρ** | Same metrics computed on the 20% of respondents held back from parameter fitting — a check that fitted parameters generalise |
 | **Brand × Scenario Recall heatmap** | Each cell is the population-average recall probability (%) for a brand in a given purchase occasion. Click a column header to sort by that scenario. Hover a cell for the exact value. |
+| **CEP Opportunity Map** | Select a brand from the dropdown to see a horizontal bar chart of that brand's recall vs. the category average per scenario. Green bars = above average (strength to defend); red bars = below average (opportunity to grow). |
 | **Brand Recall Leaderboard** | A ranked bar chart of mean recall across all scenarios — shows which brands have the strongest overall mental availability |
 
 ### Step 3 — Configure a simulation
@@ -119,6 +126,10 @@ At least one Primary occasion is required to run.
 ### Step 4 — Run and read the results
 
 Click **Run simulation**. The **Simulate** tab opens automatically.
+
+### Step 5 — Compare two ads (optional)
+
+Switch to the **Compare A vs B** tab to run two ad variants side by side against the same market baseline.
 
 #### Metric badges
 
@@ -158,6 +169,35 @@ Two panels:
 - **Predicted vs. observed scatter** — each point is a brand × CEP cell. A well-calibrated model clusters around the diagonal. Points far from the diagonal indicate scenarios where the model over- or under-predicts.
 - **Spearman ρ by scenario** — bar chart of rank correlation between predicted and observed brand ordering per purchase occasion. Scenarios below 0.2 are flagged as potentially misspecified.
 
+### Step 6 — Export results (optional)
+
+Click the **↓ Export CSV** button in the top-right of the tab bar at any point after setup. Downloads a ZIP named `cep_sim_{market}_export.zip` containing:
+
+| File | Contents |
+|---|---|
+| `market_baseline.csv` | Population-average recall probability (%) per brand × scenario (pivot table) |
+| `model_params.json` | Fitted τ, γ, prior_weight; MAE; hold-out MAE / ρ; respondent and brand counts |
+| `flight_summary.csv` | Pre / post recall and rank for all brands in the simulated scenario (present if simulate has been run) |
+| `ad_impact_summary.csv` | Per-scenario mean recall delta per brand across all occasions |
+| `scenario_diagnostics.csv` | Per-scenario MAE and Spearman ρ |
+| `scenario_recall.csv` | Full per-respondent recall scores across all scenarios |
+
+---
+
+### Compare A vs B tab
+
+Configure two independent ads — each with its own brand, primary/secondary CEPs, and branding clarity — then click **Compare A vs B**.
+
+Both ads are applied to the same unmodified market baseline (neither ad affects the other's starting point). The output is:
+
+| Element | What it shows |
+|---|---|
+| **Comparison chart** | Grouped horizontal bar chart with two bars per brand: Ad A delta (cyan) and Ad B delta (orange), sorted by Ad A displacement |
+| **Ad A table** | Full flight table for Ad A: pre/post recall, Δ recall, rank shift |
+| **Ad B table** | Full flight table for Ad B |
+
+This answers: *"Is it better to run an ad targeting occasion X or occasion Y? Which moves this brand's recall more? Which displaces more competitors?"*
+
 ---
 
 ## The model
@@ -170,20 +210,20 @@ The survey records a binary recall indicator for each respondent–brand–CEP t
 m(r, b, c) ∈ {0, 1}
 ```
 
-Each mention creates an association edge with weight:
+Initial weights are breadth-scaled by each respondent's CEP coverage for that brand:
 
 ```
-w₀(r, b, c) = α · m(r, b, c)
+w₀(r, b, c) = [Σ_c m(r,b,c) / |C|] / k(r,b)   if m(r,b,c) = 1
 ```
 
-where `α = assoc_strength_if_mentioned` (default: 1.0). Edges where `m = 0` are not stored and treated as zero at scoring time.
+where `k(r,b)` is the number of CEPs in which respondent `r` mentioned brand `b`. A brand mentioned in many CEPs gets a higher total weight than one mentioned in only one.
 
 ### Recall scoring
 
 For respondent `r`, brand `b`, and a set of active CEPs `S`:
 
 ```
-score(r, b, S) = Σ_{c∈S} w(r,b,c)  +  β  −  γ · (|B_S| − 1)
+score(r, b, S) = Σ_{c∈S} w(r,b,c)  +  β(b)  −  γ · Σ_{b′≠b} sim(b,b′) · Σ_{c∈S} w(r,b′,c)
 ```
 
 Scores are converted to probabilities via softmax with temperature `τ`:
@@ -192,34 +232,40 @@ Scores are converted to probabilities via softmax with temperature `τ`:
 P(r recalls b | S) = exp(score(r, b, S) / τ) / Σ_{b'} exp(score(r, b', S) / τ)
 ```
 
-| Symbol | Meaning | Default |
+| Symbol | Meaning | How set |
 |---|---|---|
-| `w(r,b,c)` | Association strength of respondent r for brand b at CEP c | 1.0 if mentioned |
-| `β` | Uniform base prior | 0.2 |
-| `γ` | Per-competitor score deduction | 0.05 |
-| `τ` | Softmax temperature (lower = sharper distribution) | 1.0 |
+| `w(r,b,c)` | Association strength of respondent r for brand b at CEP c | breadth-scaled from survey |
+| `β(b)` | Brand-specific awareness prior | fitted from population mention rates |
+| `sim(b,b′)` | CEP-profile cosine similarity between brands b and b′ | computed from survey |
+| `γ` | Competition weight | grid-search fitted |
+| `τ` | Softmax temperature (lower = sharper distribution) | grid-search fitted |
 
 ### Ad exposure update
 
-When the population is exposed to an ad, each respondent's association weights are updated:
+When the population is exposed to an ad, each respondent's association weights are updated with saturation and per-respondent responsiveness:
 
 ```
-w_new(r, b, c) = w_old(r, b, c) + λ · e · δ · φ(c)
+w_new(r, b, c) = w_old(r, b, c) + λ · ρ(r) · e · δ · φ(c) · (1 − w_old / w_max)
 ```
 
-| Symbol | Meaning | Default |
+| Symbol | Meaning | How set |
 |---|---|---|
-| `λ` | Learning rate | 0.1 |
-| `e` | Exposure strength | 1.0 |
-| `δ` | Branding clarity | Set in UI |
-| `φ(c)` | CEP fit: 1.0 Primary, 0.5 Secondary, 0.0 otherwise | Fixed |
+| `λ` | Base learning rate | config (default 0.1) |
+| `ρ(r)` | Per-respondent responsiveness multiplier | computed from survey engagement |
+| `e` | Exposure strength | ad-level |
+| `δ` | Branding clarity | set in UI |
+| `φ(c)` | CEP fit: 1.0 Primary, 0.5 Secondary, 0.0 otherwise | fixed |
+| `w_max` | Saturation ceiling | config (default 5.0) |
+
+New edges (brand–CEP pairs with no prior survey association) receive an additional friction factor (`new_edge_weight = 0.3`), reflecting the greater cognitive cost of forming a new association vs. reinforcing an existing one.
 
 ### Validation
 
-The model is validated against the survey data in two ways:
+The model is validated against the survey data in three ways:
 
-- **Calibration (MAE):** Mean absolute error between the model's predicted population-average recall probabilities and the observed brand mention rates per CEP. Target: < 5 pp per brand-CEP cell.
-- **Construct validity (Spearman ρ):** Rank correlation between the model's predicted brand ordering and the survey-observed ordering per scenario. A check of internal consistency, not ground-truth accuracy. Target: median ρ > 0.15.
+- **Calibration (MAE):** Mean absolute error between the model's predicted population-average recall probabilities and the observed brand mention rates per CEP. Computed on training respondents.
+- **Hold-out MAE / ρ:** Same metrics on the 20% of respondents held back from parameter fitting — confirms that fitted parameters (τ, γ, prior_weight) generalise.
+- **Construct validity (Spearman ρ):** Rank correlation between the model's predicted brand ordering and the survey-observed ordering per scenario.
 
 For the full mathematical specification, assumptions, known limitations, and upgrade paths see [backend/docs/model_spec.md](backend/docs/model_spec.md).
 
@@ -252,7 +298,7 @@ cep-simulation/
 │       │   ├── app.py            # FastAPI app
 │       │   ├── session.py        # In-memory session store
 │       │   ├── plotly_charts.py  # Plotly JSON builders
-│       │   └── routes/           # setup, simulate, baseline endpoints
+│       │   └── routes/           # setup, simulate, baseline, compare, export endpoints
 │       └── ui/
 │           ├── index.html
 │           └── src/
@@ -270,7 +316,7 @@ cep-simulation/
 
 ## Running tests
 
-Tests use synthetic fixtures (3 respondents, 3 brands, 2 CEPs) and do not require the survey data file.
+Tests use synthetic fixtures (3 respondents, 3 brands, 2 CEPs) and do not require the survey data file. 65 tests across 5 modules.
 
 ```bash
 pytest backend/tests/ -v
@@ -284,13 +330,18 @@ All model parameters are in `backend/configs/cep_sim_config_uk.toml`. The `[ad]`
 
 ```toml
 [defaults]
-base_usage_default         = 0.2   # β — uniform brand prior
-learning_rate              = 0.1   # λ — ad update step size
-competition_penalty_weight = 0.05  # γ — per-competitor score deduction
-softmax_temperature        = 1.0   # τ — probability sharpness
+base_usage_default         = 0.2   # β floor — minimum prior for brands with low survey coverage
+learning_rate              = 0.1   # λ — base ad update step size (scaled per respondent at runtime)
+competition_penalty_weight = 0.05  # γ — competition weight (overridden by grid-search fit at setup)
+softmax_temperature        = 1.0   # τ — probability sharpness (overridden by grid-search fit at setup)
+w_max                      = 5.0   # saturation ceiling for association weights
+new_edge_weight            = 0.3   # friction for forming brand-new CEP associations
+base_prior_weight          = 1.0   # scalar on awareness priors (overridden by grid-search fit at setup)
 
 [ad]
 focal_brand_name          = "Heineken"
 focal_cep_keywords        = ["watching sport"]
-secondary_cep_keywords    = ["relaxing"]
+secondary_cep_keywords    = ["hosting friends", "out with co-workers"]
 ```
+
+**Note:** τ, γ, and `base_prior_weight` are overridden at setup time by a joint grid search that minimises calibration MAE. Config values serve as defaults only if fitting is skipped.

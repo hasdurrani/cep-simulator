@@ -134,6 +134,7 @@ def setup(request: SetupRequest):
             tau_grid=[0.3, 0.7, 1.0, 2.0],
             gamma_grid=[0.0, 0.05, 0.1, 0.2],
             prior_weight_grid=[0.5, 1.0, 2.0],
+            brand_similarity=brand_similarity,
         )
         config.defaults.softmax_temperature = fitted_params["tau"]
         config.defaults.base_prior_weight   = fitted_params["prior_weight"]

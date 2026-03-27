@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from frontend.cep_sim.api.routes import setup, simulate, baseline
+from frontend.cep_sim.api.routes import setup, simulate, baseline, compare, export
 
 app = FastAPI(title="CEP Simulator", version="1.0")
 
@@ -24,6 +24,8 @@ app.add_middleware(
 app.include_router(setup.router,    prefix="/api")
 app.include_router(simulate.router, prefix="/api")
 app.include_router(baseline.router, prefix="/api")
+app.include_router(compare.router,  prefix="/api")
+app.include_router(export.router,   prefix="/api")
 
 # Serve the React UI as static files
 _ui_dir = Path(__file__).parent.parent / "ui"

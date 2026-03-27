@@ -389,3 +389,87 @@ def opportunity_chart(scenario_recall_df: pd.DataFrame, brand_id: str, brand_nam
     )
 
     return pio.to_json(fig)
+
+
+def compare_chart(
+    impact_a: pd.DataFrame,
+    impact_b: pd.DataFrame,
+    focal_scenario: str,
+    brand_a_name: str,
+    brand_b_name: str,
+    top_n: int = 12,
+) -> str:
+    """
+    Side-by-side grouped bar chart comparing Ad A vs Ad B displacement.
+
+    Each brand gets two horizontal bars: Ad A delta (teal) and Ad B delta (orange).
+    Sorted by Ad A delta descending so the focal brand sits near the top.
+    """
+    import plotly.graph_objects as go
+
+    def _agg(df: pd.DataFrame) -> pd.Series:
+        sub = df[df["scenario_name"] == focal_scenario]
+        if sub.empty:
+            return pd.Series(dtype=float)
+        return sub.groupby("brand_name")["delta"].mean()
+
+    delta_a = _agg(impact_a)
+    delta_b = _agg(impact_b)
+
+    if delta_a.empty and delta_b.empty:
+        return "{}"
+
+    combined = pd.DataFrame({"delta_a": delta_a, "delta_b": delta_b}).fillna(0.0)
+    combined = combined.nlargest(top_n, "delta_a").sort_values("delta_a", ascending=True)
+
+    brands = combined.index.tolist()
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        name=f"Ad A · {brand_a_name}",
+        x=(combined["delta_a"] * 100).round(3).tolist(),
+        y=brands,
+        orientation="h",
+        marker_color="#22d3ee",   # cyan-400
+        opacity=0.85,
+        hovertemplate="<b>%{y}</b><br>Ad A: %{x:+.3f} pp<extra></extra>",
+    ))
+
+    fig.add_trace(go.Bar(
+        name=f"Ad B · {brand_b_name}",
+        x=(combined["delta_b"] * 100).round(3).tolist(),
+        y=brands,
+        orientation="h",
+        marker_color="#f97316",   # orange-500
+        opacity=0.85,
+        hovertemplate="<b>%{y}</b><br>Ad B: %{x:+.3f} pp<extra></extra>",
+    ))
+
+    fig.add_vline(x=0, line_color="#475569", line_width=1)
+
+    fig.update_layout(
+        **_LAYOUT,
+        barmode="group",
+        margin=dict(l=180, r=90, t=60, b=50),
+        title=dict(
+            text=f"Ad A vs Ad B — {focal_scenario.replace('_', ' ')}",
+            font=dict(size=13, color="#e2e8f0"),
+        ),
+        xaxis=dict(
+            title="Mean recall delta (pp)",
+            gridcolor="#334155",
+            tickformat="+.3f",
+            zerolinecolor="#475569",
+        ),
+        yaxis=dict(gridcolor="#334155", ticklabelstandoff=10),
+        height=max(360, len(brands) * 55 + 120),
+        legend=dict(
+            orientation="h",
+            y=1.08,
+            x=0,
+            font=dict(size=11),
+            bgcolor="rgba(0,0,0,0)",
+        ),
+    )
+    return fig.to_json()

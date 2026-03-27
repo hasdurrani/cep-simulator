@@ -69,6 +69,7 @@ def generate_standard_outputs(
     dpi: int = 150,
     holdout_mae: float | None = None,
     median_spearman: float | None = None,
+    skip_charts: bool = False,
 ) -> dict[str, Path]:
     """
     Generate all standard outputs for a CEP simulator run and write a RunManifest.
@@ -173,22 +174,23 @@ def generate_standard_outputs(
         logger.warning("ad_impact failed: %s", exc)
 
     # ------------------------------------------------------------------
-    # 4. Campaign flight simulator (chart + summary CSV)
+    # 4. Campaign flight simulator (summary CSV; chart only if not skip_charts)
     # ------------------------------------------------------------------
     try:
-        fig, _ = plot_flight_simulator(
-            impact_df, scenario_name=focal_scenario,
-            focal_brand_name=focal_brand_name, top_n=8,
-            title=f"Campaign flight simulator — {focal_brand_name} | {focal_scenario} | {country}",
-        )
-        p = out_path / "campaign_flight_simulator.png"
-        fig.savefig(p, dpi=dpi, bbox_inches="tight")
-        plt.close(fig)
-        saved["flight_simulator"] = p
-        _art("chart", "Campaign Flight Simulator",
-             "Pre/post recall and competitive displacement chart",
-             p, "image")
-        logger.info("Saved flight simulator: %s", p)
+        if not skip_charts:
+            fig, _ = plot_flight_simulator(
+                impact_df, scenario_name=focal_scenario,
+                focal_brand_name=focal_brand_name, top_n=8,
+                title=f"Campaign flight simulator — {focal_brand_name} | {focal_scenario} | {country}",
+            )
+            p = out_path / "campaign_flight_simulator.png"
+            fig.savefig(p, dpi=dpi, bbox_inches="tight")
+            plt.close(fig)
+            saved["flight_simulator"] = p
+            _art("chart", "Campaign Flight Simulator",
+                 "Pre/post recall and competitive displacement chart",
+                 p, "image")
+            logger.info("Saved flight simulator: %s", p)
 
         summary = flight_simulator_summary(impact_df, focal_scenario)
         csv_p = out_path / "flight_simulator_summary.csv"
@@ -203,24 +205,25 @@ def generate_standard_outputs(
         logger.warning("flight_simulator failed: %s", exc)
 
     # ------------------------------------------------------------------
-    # 5. Memory map comparison (chart)
+    # 5. Memory map comparison (chart only if not skip_charts)
     # ------------------------------------------------------------------
-    try:
-        fig, _ = plot_memory_map_comparison(
-            rbc_pre, cep_master_df, focal_brand_id=focal_brand_id,
-            top_n_brands=8, top_n_ceps=10,
-            title=f"Respondent memory maps — {focal_brand_name} loyalist vs competitor | {country}",
-        )
-        p = out_path / "memory_map_comparison.png"
-        fig.savefig(p, dpi=dpi, bbox_inches="tight")
-        plt.close(fig)
-        saved["memory_map_comparison"] = p
-        _art("chart", "Memory Map Comparison",
-             "Side-by-side brand loyalist memory heatmaps",
-             p, "heatmap")
-        logger.info("Saved memory map comparison: %s", p)
-    except Exception as exc:
-        logger.warning("memory_map_comparison failed: %s", exc)
+    if not skip_charts:
+        try:
+            fig, _ = plot_memory_map_comparison(
+                rbc_pre, cep_master_df, focal_brand_id=focal_brand_id,
+                top_n_brands=8, top_n_ceps=10,
+                title=f"Respondent memory maps — {focal_brand_name} loyalist vs competitor | {country}",
+            )
+            p = out_path / "memory_map_comparison.png"
+            fig.savefig(p, dpi=dpi, bbox_inches="tight")
+            plt.close(fig)
+            saved["memory_map_comparison"] = p
+            _art("chart", "Memory Map Comparison",
+                 "Side-by-side brand loyalist memory heatmaps",
+                 p, "heatmap")
+            logger.info("Saved memory map comparison: %s", p)
+        except Exception as exc:
+            logger.warning("memory_map_comparison failed: %s", exc)
 
     # ------------------------------------------------------------------
     # 6. Calibration dashboard (chart + diagnostics CSV + markdown report)
@@ -230,18 +233,19 @@ def generate_standard_outputs(
         spearman_df = run_spearman_validity(scenario_recall_df, long_df)
         diag_df     = run_scenario_diagnostics(scenario_recall_df, long_df)
 
-        fig, _ = plot_calibration_dashboard(
-            cal_df, spearman_df, diag_df,
-            title=f"Calibration & trust dashboard | {country}",
-        )
-        p = out_path / "calibration_dashboard.png"
-        fig.savefig(p, dpi=dpi, bbox_inches="tight")
-        plt.close(fig)
-        saved["calibration_dashboard"] = p
-        _art("chart", "Calibration Dashboard",
-             "Calibration scatter, per-scenario Spearman ρ, and per-scenario MAE",
-             p, "image")
-        logger.info("Saved calibration dashboard: %s", p)
+        if not skip_charts:
+            fig, _ = plot_calibration_dashboard(
+                cal_df, spearman_df, diag_df,
+                title=f"Calibration & trust dashboard | {country}",
+            )
+            p = out_path / "calibration_dashboard.png"
+            fig.savefig(p, dpi=dpi, bbox_inches="tight")
+            plt.close(fig)
+            saved["calibration_dashboard"] = p
+            _art("chart", "Calibration Dashboard",
+                 "Calibration scatter, per-scenario Spearman ρ, and per-scenario MAE",
+                 p, "image")
+            logger.info("Saved calibration dashboard: %s", p)
 
         diag_p = out_path / "scenario_diagnostics.csv"
         diag_df.to_csv(diag_p, index=False)

@@ -113,6 +113,7 @@ def simulate(request: SimulateRequest):
             sess.cep_master_df, sess.brand_name_map, sess.config,
             brand_priors=sess.brand_priors,
             brand_similarity=sess.brand_similarity,
+            pre_recall_df=sess.scenario_recall_df,
         )
         segment_summary_df = build_segment_summary(ad_impact_df, sess.respondents_df)
     except Exception as exc:
@@ -158,6 +159,7 @@ def simulate(request: SimulateRequest):
             out_dir=out_dir,
             holdout_mae=mae,
             median_spearman=med_rho,
+            skip_charts=True,       # UI uses Plotly charts; matplotlib PNGs not needed on hot path
         )
     except Exception as exc:
         raise HTTPException(500, f"Output generation failed: {exc}")

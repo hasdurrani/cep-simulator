@@ -191,22 +191,34 @@ def run_ad_impact(
     brand_priors: dict[str, float] | None = None,
     cep_brand_priors: dict[tuple, float] | None = None,
     brand_similarity: dict[tuple[str, str], float] | None = None,
+    pre_recall_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """
     Compare recall before and after ad exposure for each respondent × scenario.
+
+    pre_recall_df: if provided (e.g. sess.scenario_recall_df), skip recomputing
+                   baseline recall — avoids a full run_scenario_recall call.
     """
-    pre_df = run_scenario_recall(
-        respondent_ids, scenarios, rbc_pre, cep_master_df, brand_name_map, config,
-        brand_priors=brand_priors, cep_brand_priors=cep_brand_priors,
-        brand_similarity=brand_similarity,
-    )
+    if pre_recall_df is not None:
+        pre_df = pre_recall_df.copy()
+        # Normalise column names to match what we'd get from run_scenario_recall
+        if "recall_score" in pre_df.columns and "recall_pre" not in pre_df.columns:
+            pre_df = pre_df.rename(columns={"recall_score": "recall_pre"})
+        if "rank" in pre_df.columns and "rank_pre" not in pre_df.columns:
+            pre_df = pre_df.rename(columns={"rank": "rank_pre"})
+    else:
+        pre_df = run_scenario_recall(
+            respondent_ids, scenarios, rbc_pre, cep_master_df, brand_name_map, config,
+            brand_priors=brand_priors, cep_brand_priors=cep_brand_priors,
+            brand_similarity=brand_similarity,
+        ).rename(columns={"recall_score": "recall_pre", "rank": "rank_pre"})
+
     post_df = run_scenario_recall(
         respondent_ids, scenarios, rbc_post, cep_master_df, brand_name_map, config,
         brand_priors=brand_priors, cep_brand_priors=cep_brand_priors,
         brand_similarity=brand_similarity,
     )
 
-    pre_df = pre_df.rename(columns={"recall_score": "recall_pre", "rank": "rank_pre"})
     post_df = post_df.rename(columns={"recall_score": "recall_post", "rank": "rank_post"})
 
     merged = pre_df.merge(

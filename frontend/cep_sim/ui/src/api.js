@@ -17,6 +17,8 @@ export const api = {
   configs:  ()      => req("GET",  "/configs"),
   setup:    (body)  => req("POST", "/setup",    body),
   simulate: (body)  => req("POST", "/simulate", body),
-  baseline: (sessionId, brandId) => req("GET", `/baseline/${sessionId}${brandId ? `?brand_id=${brandId}` : ""}`),
+  compare:  (body)  => req("POST", "/compare",  body),
+  baseline:   (sessionId, brandId) => req("GET", `/baseline/${sessionId}${brandId ? `?brand_id=${brandId}` : ""}`),
+  exportUrl:  (sessionId) => `${BASE}/export/${sessionId}`,
   artifactUrl: (sessionId, filename) => `${BASE}/artifacts/${sessionId}/${filename}`,
 };
