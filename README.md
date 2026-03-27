@@ -43,8 +43,8 @@ The output is a recall probability distribution: *given that a consumer is at th
 ### Install
 
 ```bash
-git clone https://github.com/hasdurrani/cep-simulation.git
-cd cep-simulation
+git clone https://github.com/hasdurrani/cep-simulator.git
+cd cep-simulator
 pip install -e .
 ```
 
@@ -274,7 +274,7 @@ For the full mathematical specification, assumptions, known limitations, and upg
 ## Repo structure
 
 ```
-cep-simulation/
+cep-simulator/
 ├── backend/
 │   ├── schemas/        # Pydantic models (config, respondent, events, ontology)
 │   ├── service/        # Core engine
@@ -285,7 +285,7 @@ cep-simulation/
 │   │   ├── ontology_builder.py   # CEP deduplication + family inference
 │   │   ├── runner.py             # End-to-end pipeline runner
 │   │   └── output_builder.py     # Artifact writing
-│   ├── tests/          # 52 unit tests (no data file required)
+│   ├── tests/          # 65 unit tests (no data file required)
 │   ├── notebooks/      # Annotated analysis notebooks (UK, Brazil)
 │   ├── docs/
 │   │   └── model_spec.md         # Full mathematical specification
