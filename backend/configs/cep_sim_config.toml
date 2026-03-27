@@ -1,0 +1,27 @@
+[survey]
+zip_path    = "backend/analysis/cep_sim/data/raw/DYNATA Raw Data CSV for Brazil and UK.zip"
+data_file   = "DYNATA Raw Data CSV for Brazil and UK/Brazil/1301337-data-Stage_3_Brazil_Heineken_Feb_2026-03-26-2026-CX--Default.csv"
+codebook_file = "DYNATA Raw Data CSV for Brazil and UK/Brazil/1301337-Stage_3_Brazil_Heineken_Feb_2026-03-26-2026-CX--Default.txt"
+respondent_id_column = "CID"
+country     = "Brazil"
+
+[survey.demographic_columns]
+gender       = "Q2"     # 1=Masculino 2=Feminino 3=Não binário
+age          = "Q3"     # coded 1=18 2=19 ... 43=60 44=61+
+income       = "Q6"     # household income bracket
+has_children = "Q7"     # 1=Sim 2=Não
+
+[survey.recall]
+cep_blocks     = ["Q10","Q11","Q12","Q13","Q14","Q15","Q16","Q17","Q18","Q19","Q20"]
+exclude_brands = ["Nenhuma das opções acima"]
+
+[defaults]
+assoc_strength_if_mentioned = 1.0   # edge weight when brand is mentioned
+base_usage_default          = 0.2   # baseline prior for all brands
+learning_rate               = 0.1   # per-ad memory update step
+competition_penalty_weight  = 0.05  # penalty per competitor brand
+softmax_temperature         = 1.0   # recall probability sharpness (1=neutral)
+
+[output]
+processed_dir = "backend/analysis/cep_sim/data/processed"
+outputs_dir   = "outputs/cep_sim"

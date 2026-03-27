@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CEP Simulator</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 500: '#22c55e', 600: '#16a34a', 400: '#4ade80' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0f172a; color: #f1f5f9; font-family: 'Inter', system-ui, sans-serif; }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    .spinner { border: 2px solid #334155; border-top-color: #22c55e; border-radius: 50%;
+               width: 20px; height: 20px; animation: spin 0.7s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .tab-active { border-bottom: 2px solid #22c55e; color: #22c55e; }
+    input[type=range] { accent-color: #22c55e; }
+    select { background-color: #1e293b; border: 1px solid #334155; color: #f1f5f9; }
+    select option { background: #1e293b; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div id="root"></div>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <script type="module" src="/src/app.js"></script>
+</body>
+</html>

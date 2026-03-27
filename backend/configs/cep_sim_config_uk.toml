@@ -1,0 +1,45 @@
+[survey]
+zip_path      = "backend/analysis/cep_sim/data/raw/DYNATA Raw Data CSV for Brazil and UK.zip"
+data_file     = "DYNATA Raw Data CSV for Brazil and UK/UK/1301246-data-Stage_3_UK_Heineken_Beer_Feb_26-03-26-2026-CX--Default.csv"
+codebook_file = "DYNATA Raw Data CSV for Brazil and UK/UK/1301246-Stage_3_UK_Heineken_Beer_Feb_26-03-26-2026-CX--Default.txt"
+respondent_id_column = "CID"
+country       = "UK"
+
+[survey.demographic_columns]
+gender       = "Q2"     # 1=Male 2=Female 3=Non-binary
+age          = "Q3"     # coded 1=18 2=19 ... 43=60 44=61+
+income       = "Q6"     # household income bracket
+has_children = "Q7"     # 1=Yes 2=No
+
+[survey.recall]
+cep_blocks = [
+  "Q10","Q11","Q12","Q13","Q14","Q15","Q16","Q17","Q18","Q19","Q20",
+  "Q21","Q22","Q23","Q24","Q25","Q26","Q27","Q28","Q29","Q30"
+]
+exclude_brands = ["None of the Above"]
+
+[defaults]
+assoc_strength_if_mentioned = 1.0
+base_usage_default          = 0.2
+learning_rate               = 0.1
+competition_penalty_weight  = 0.05
+softmax_temperature         = 1.0
+w_max                       = 5.0
+new_edge_weight             = 0.3
+base_prior_weight           = 1.0
+
+[output]
+processed_dir = "backend/analysis/cep_sim/data/processed"
+outputs_dir   = "outputs/cep_sim/uk"
+
+[ad]
+ad_id                    = "heineken_pub_sport_001"
+brand_id                 = "brand_heineken"
+brand_name               = "Heineken"
+focal_scenario           = "pub_with_friends"
+focal_cep_keywords       = []
+secondary_cep_keywords   = []
+branding_clarity         = 0.9
+attention_weight         = 1.0
+channel                  = "digital_video"
+emotion                  = "social_warmth"
