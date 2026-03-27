@@ -59,7 +59,11 @@ where `m = 1` means respondent `r` mentioned brand `b` when prompted with purcha
 
 Each respondent answers all 11 CEPs × 21 brands = 231 questions. We observe a sparse binary matrix.
 
-### 1.2 Current initialisation rule
+### 1.2 Theoretical grounding
+
+Treating survey recall mentions as a proxy for associative memory strength is consistent with **spreading activation theory** (Collins & Loftus, 1975), which models memory as a network of nodes (brands) connected by weighted associations (CEP links). Brand-CEP associations have been used as the operational basis of brand equity since Keller (1993), where brand knowledge is defined as the set of associations held in consumer memory. Top-of-mind recall in a CEP-cued survey is a standard EBI measurement of mental availability (Sharp, 2010).
+
+### 1.3 Current initialisation rule
 
 An association edge is created only when `m(r, b, c) = 1`:
 
@@ -71,7 +75,7 @@ where `α = assoc_strength_if_mentioned` (default: 1.0). Edges where `m = 0` are
 
 **What this means in practice:** every mention is worth the same regardless of how many CEPs a brand was mentioned in, and non-mentions carry no information.
 
-### 1.3 Assumptions
+### 1.4 Assumptions
 
 | Assumption | Status |
 |---|---|
@@ -80,7 +84,7 @@ where `α = assoc_strength_if_mentioned` (default: 1.0). Edges where `m = 0` are
 | Zero weight = no association | Reasonable for MVP — unmeasured edges are treated as no evidence rather than negative evidence. |
 | α = 1.0 is the right scale | Arbitrary. Scale matters only relative to β (base prior) and λ (learning rate). Internally consistent but not anchored to any external probability. |
 
-### 1.4 A stronger initialisation
+### 1.5 A stronger initialisation
 
 A defensible alternative scales initial weights by the respondent's own CEP breadth for that brand. Let `k(r,b) = Σ_c m(r,b,c)` be the number of CEPs where respondent r mentioned brand b. Then:
 
@@ -92,39 +96,58 @@ w₀(r,b,c) = ⎨
 
 This preserves the respondent's total brand breadth score `Σ_c m(r,b,c) / |C|` — a value in [0, 1] interpretable as CEP coverage fraction — and allocates it equally across the CEPs they mentioned. A brand mentioned in 9/11 CEPs gets a higher total weight than one mentioned in 1/11, but each per-CEP edge is proportionally smaller.
 
-In the current MVP, k(r,b) = 1 for most edges (binary, not breadth-weighted), so the numerator and denominator cancel and w₀ = α for all edges. The formula above is the upgrade path, not the current state.
-
-Implementing this requires updating `respondent_builder.py: build_respondent_brand_cep()` to compute k(r,b) per respondent-brand pair before assigning per-CEP weights.
+This preserves the respondent's total brand breadth score as a CEP coverage fraction in [0,1] — consistent with EBI's concept of mental availability breadth — and allocates it proportionally across mentioned CEPs. The breadth-weighted version is **currently implemented** in `respondent_builder.py: build_respondent_brand_cep()`.
 
 ---
 
 ## 2. Recall Scoring
 
-### 2.1 Raw score
+### 2.1 Theoretical grounding
+
+The scoring structure has strong grounding in two independent traditions:
+
+**ACT-R cognitive architecture (Anderson, 1983; Anderson & Lebiere, 1998):**
+ACT-R models memory retrieval as an activation competition. The activation of a memory chunk i is:
+
+```
+A_i = B_i + Σ_j W_j · S_ji
+```
+
+where `B_i` is base-level activation (frequency/recency of prior retrieval) and `S_ji` is the associative strength from cue j. This maps directly onto the scoring model: `β` is the base-level activation, and `Σ w(r,b,c)` is the cue-weighted associative sum. ACT-R also predicts the fan effect — more items in memory linked to a cue means lower individual activation — which motivates the competition term.
+
+**Luce's Choice Axiom / Multinomial Logit (Luce, 1959; McFadden, 1973):**
+The softmax probability function is a direct implementation of Luce's Choice Axiom: `P(i | S) = u(i) / Σ_{j∈S} u(j)`. In log-linear form with utility `u(b) = exp(score(b)/τ)` this is exactly the Multinomial Logit model, for which McFadden received the Nobel Prize in Economics (2000). Temperature `τ` maps to the precision parameter in Random Utility Models.
+
+### 2.2 Raw score
 
 For respondent `r`, brand `b`, and a set of active CEPs `S` (the purchase occasion being simulated):
 
 ```
-score(r, b, S) = semantic(r, b, S) + β − γ · (|B_S| − 1)
+score(r, b, S) = semantic(r, b, S) + β + episodic(r, b, S) − γ · other_semantic(r, b, S)
 ```
 
 Where:
 
 ```
-semantic(r, b, S) = Σ_{c ∈ S} w(r, b, c)
+semantic(r, b, S)       = Σ_{c ∈ S} w(r, b, c)
+other_semantic(r, b, S) = Σ_{b′ ≠ b} semantic(r, b′, S)   [total respondent semantic − semantic(b)]
 ```
 
-- `β` = `base_usage_default` (default: 0.2) — a uniform baseline prior applied to every brand
-- `γ` = `competition_penalty_weight` (default: 0.05) — a per-competitor deduction
-- `|B_S|` = number of distinct brands with any association to any CEP in `S` across the full population
+- `β` = `base_usage_default` (default: 0.2) — a uniform baseline prior for every brand
+- `γ` = `competition_penalty_weight` (default: 0.05) — weight on competing semantic strength
+- `episodic` = 0 unless episodic events are passed explicitly (see §3.2)
 
-An episodic term is added when ad exposure events are present (see §3):
+**Important note on the competition term:**
+Expanding the score algebraically:
 
 ```
-score(r, b, S) = semantic(r, b, S) + episodic(r, b, S) + β − γ · (|B_S| − 1)
+score(b) = semantic(b) + β − γ·(total_semantic − semantic(b))
+         = (1+γ)·semantic(b) + β − γ·total_semantic
 ```
 
-### 2.2 Recall probability
+The constants `β` and `γ·total_semantic` cancel in softmax, and `(1+γ)` scales all scores equally — so `P(r recalls b | S) = softmax(semantic)` regardless of γ. **The competition term does not affect recall probabilities.** Its only role is to make raw scores interpretable: brands in crowded occasions have lower raw scores before normalization. This is a deliberate design choice for interpretability, not a substantive modelling decision.
+
+### 2.3 Recall probability
 
 Scores are converted to probabilities via softmax with temperature `τ`:
 
@@ -134,29 +157,16 @@ P(r recalls b | S) = exp(score(r, b, S) / τ) / Σ_{b' ∈ B_S} exp(score(r, b',
 
 Default `τ = 1.0`. Lower τ sharpens the distribution toward the leading brand; higher τ flattens it.
 
-### 2.3 Assumptions and limitations
-
-**Competition term:**
-The penalty `γ · (|B_S| − 1)` is a flat constant tax — it does not depend on which brand is being scored or how strong competitors are. Every brand pays the same deduction regardless of whether competitors are dominant or marginal. This is the weakest part of the scoring model.
-
-The next version should replace it with a brand-specific competition term based on CEP profile overlap:
-
-```
-competition(r, b, S) = Σ_{b′ ≠ b} sim(b, b′ | S) · availability(r, b′)
-```
-
-where `sim(b, b′ | S)` measures how much b and b′ overlap in their CEP associations (cosine similarity of their population-level CEP vectors restricted to S), and `availability(r, b′)` is b′'s semantic score for respondent r. This makes the competitive pressure on Heineken different from the pressure on a niche brand even under the same scenario.
-
-The current term also uses population-level brand density (`|B_S|` across all respondents), not respondent-level density. This means the competitive landscape is identical for a heavy Heineken user and a non-buyer — only their semantic weight differs.
+### 2.4 Assumptions and limitations
 
 **Base prior:**
-`β = 0.2` is a uniform flat prior. In reality, brand awareness (Q8 in the survey) is heterogeneous and correlated with CEP recall. A stronger base would be `β(b) ∝ market_share(b)` or `β(r, b) ∝ awareness(r, b)`.
+`β = 0.2` is a uniform flat prior. In reality, brand awareness is heterogeneous and strongly correlated with CEP recall (supported by EBI research on mental availability and penetration). A stronger base would be `β(b) ∝ market_share(b)` or `β(r, b) ∝ awareness(r, b)`. The uniform prior suppresses calibration accuracy for small brands and overstates it for large ones.
 
 **Additive combination:**
-The score is a linear sum of components. This is an assumption, not a derivation. The components could interact — for example, high semantic strength may reduce the marginal value of an episodic boost. A multiplicative or attention-weighted model would capture this, at the cost of more parameters.
+The additive structure (semantic + base + episodic) is an assumption shared with ACT-R, not a derivation. The components could interact — high semantic strength may reduce the marginal value of an episodic boost. A multiplicative or attention-weighted model would capture this at the cost of more parameters.
 
 **Softmax and the IIA problem:**
-Softmax satisfies Independence of Irrelevant Alternatives — adding a new brand equally dilutes all others. In beer, new alternatives do not uniformly dilute market leaders. This is a known limitation of softmax-based choice models; Dirichlet-logistic or nested logit are stronger but out of scope for this MVP.
+Softmax satisfies Independence of Irrelevant Alternatives — adding a new brand dilutes all others equally. In practice, a niche craft beer entering the market does not equally dilute Heineken and another niche brand. Nested Logit or Mixed Logit models address this; they are out of scope for this version.
 
 ### 2.4 What the score is not
 
@@ -166,7 +176,20 @@ The recall probability `P(r recalls b | S)` is a relative accessibility rank, no
 
 ## 3. Ad Exposure Update
 
-### 3.1 Update rule
+### 3.1 Theoretical grounding
+
+The update rule is structurally equivalent to the **Rescorla-Wagner model** (Rescorla & Wagner, 1972), the most replicated model in associative learning:
+
+```
+ΔV_CS = α · β · (λ − V_CS)                          [Rescorla-Wagner]
+Δw    = λ_lr · e · δ · φ(c) · (1 − w_old / w_max)   [this model]
+```
+
+The correspondence: `φ(c)` is stimulus salience (α); `δ` (branding clarity) is reinforcement salience (β); `w_max` is the asymptote (λ); and `(1 − w/w_max)` is the prediction error `(λ − V)`. The saturation factor produces exactly the diminishing-returns curve that Rescorla-Wagner predicts from first principles.
+
+The new-edge friction parameter (`new_edge_weight = 0.3`) reduces the update for forming a completely new association vs. reinforcing an existing one. This is supported by Ebbinghaus (1885) on memory consolidation and a substantial advertising literature distinguishing between new-brand awareness building (requires more exposures) and reminder advertising for established associations.
+
+### 3.2 Update rule
 
 When respondent `r` is exposed to an ad for brand `b`:
 
@@ -177,17 +200,18 @@ w_new(r, b, c) = w_old(r, b, c) + Δ(b, c)
 where:
 
 ```
-Δ(b, c) = λ · e · δ · φ(c)
+Δ(b, c) = λ · e · δ · φ(c) · (1 − w_old / w_max)
 ```
 
 - `λ` = `learning_rate` (default: 0.1)
 - `e` = `exposure_strength` (default: 1.0; could encode channel reach or frequency)
 - `δ` = `branding_clarity` (ad-level; 0–1 scale; how clearly the ad links brand to occasion)
 - `φ(c)` = CEP fit weight: 1.0 for focal CEPs, 0.5 for secondary CEPs, 0.0 otherwise
+- `w_max` = saturation ceiling (default: 5.0)
 
-If no edge exists for `(r, b, c)`, a new edge is created with weight `Δ(b, c)`.
+If no edge exists for `(r, b, c)`, a new edge is created with an additional friction factor `new_edge_weight` (default: 0.3) applied to `Δ`, reflecting the greater cognitive cost of forming a new association vs. reinforcing an existing one.
 
-### 3.2 Episodic events
+### 3.3 Episodic events
 
 In addition to updating `w`, each ad application creates an `EpisodicEvent` record. When `episodic_events` is passed to the scoring function, the episodic boost is:
 
@@ -199,7 +223,7 @@ where `e.strength = exposure_strength × branding_clarity × attention_weight`.
 
 This means the model currently double-counts ad impact: once through the updated `w` values and again through the episodic events. In the notebook, `apply_ad_to_population` returns `rbc_post` (updated weights), and `run_ad_impact` uses `rbc_post` without passing episodic events — so the double-count is avoided in practice, but it is a latent design risk.
 
-### 3.3 Assumptions and limitations
+### 3.4 Assumptions and limitations
 
 **Saturation (implemented):**
 The update rule includes a saturation factor to prevent unbounded weight growth:
@@ -333,8 +357,30 @@ The specification above identifies concrete gaps. In priority order:
 
 1. ~~**Implement calibration check (§4.3)**~~ — done (`run_calibration_check` in `validator.py`).
 2. ~~**Implement construct-validity check (§4.4)**~~ — done (`run_spearman_validity` in `validator.py`).
-3. **Fix double-count risk (§3.2)** — decide whether episodic events are additive to weight updates or a replacement. Document the choice.
-4. **Scale initial weights by CEP breadth (§1.4)** — stronger initialisation, one change in `respondent_builder.py`.
+3. **Fix double-count risk (§3.3)** — decide whether episodic events are additive to weight updates or a replacement. Document the choice.
+4. ~~**Scale initial weights by CEP breadth (§1.5)**~~ — done (breadth-weighting implemented in `respondent_builder.py`).
 5. **Fit β and γ to observed mention rates (§5)** — simple grid search on calibration MAE. Makes the model defensible.
-6. ~~**Add saturation to update rule (§3.3)**~~ — done (implemented in `ad_engine.py`).
+6. ~~**Add saturation to update rule (§3.4)**~~ — done (implemented in `ad_engine.py`).
 7. **Hold-out validation (§4.5)** — 80/20 respondent split for held-out calibration and construct-validity.
+
+---
+
+## 7. References
+
+Anderson, J. R. (1983). *The Architecture of Cognition*. Harvard University Press.
+
+Anderson, J. R., & Lebiere, C. (1998). *The Atomic Components of Thought*. Lawrence Erlbaum Associates.
+
+Collins, A. M., & Loftus, E. F. (1975). A spreading-activation theory of semantic processing. *Psychological Review*, 82(6), 407–428.
+
+Ebbinghaus, H. (1885). *Über das Gedächtnis*. Duncker & Humblot. [Translation: *Memory: A Contribution to Experimental Psychology*, 1913.]
+
+Keller, K. L. (1993). Conceptualizing, measuring, and managing customer-based brand equity. *Journal of Marketing*, 57(1), 1–22.
+
+Luce, R. D. (1959). *Individual Choice Behavior: A Theoretical Analysis*. Wiley.
+
+McFadden, D. (1973). Conditional logit analysis of qualitative choice behavior. In P. Zarembka (Ed.), *Frontiers in Econometrics* (pp. 105–142). Academic Press.
+
+Rescorla, R. A., & Wagner, A. R. (1972). A theory of Pavlovian conditioning: Variations in the effectiveness of reinforcement and nonreinforcement. In A. H. Black & W. F. Prokasy (Eds.), *Classical Conditioning II* (pp. 64–99). Appleton-Century-Crofts.
+
+Sharp, B. (2010). *How Brands Grow: What Marketers Don't Know*. Oxford University Press.
