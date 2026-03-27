@@ -1,5 +1,5 @@
 [survey]
-zip_path      = "backend/analysis/cep_sim/data/raw/DYNATA Raw Data CSV for Brazil and UK.zip"
+zip_path      = "backend/data/raw/DYNATA Raw Data CSV for Brazil and UK.zip"
 data_file     = "DYNATA Raw Data CSV for Brazil and UK/UK/1301246-data-Stage_3_UK_Heineken_Beer_Feb_26-03-26-2026-CX--Default.csv"
 codebook_file = "DYNATA Raw Data CSV for Brazil and UK/UK/1301246-Stage_3_UK_Heineken_Beer_Feb_26-03-26-2026-CX--Default.txt"
 respondent_id_column = "CID"
@@ -29,7 +29,7 @@ new_edge_weight             = 0.3
 base_prior_weight           = 1.0
 
 [output]
-processed_dir = "backend/analysis/cep_sim/data/processed"
+processed_dir = "backend/data/processed"
 outputs_dir   = "outputs/cep_sim/uk"
 
 [ad]

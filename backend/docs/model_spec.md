@@ -234,7 +234,7 @@ There are two levels of validation possible:
 
 These are existence checks. They confirm the pipeline produces non-degenerate output. They do not assess whether the output is accurate.
 
-### 4.3 Calibration check (not yet implemented)
+### 4.3 Calibration check (implemented — `validator.py: run_calibration_check`)
 
 For each CEP `c`, the model predicts `P(r recalls b | c)` for all respondents `r` and brands `b`. The observed mention rate for brand `b` at CEP `c` is:
 
@@ -248,25 +248,27 @@ A calibrated model should satisfy:
 (1/|R|) Σ_r P(r recalls b | c) ≈ p̂(b, c)
 ```
 
-**Implementation:** After running `run_scenario_recall`, compute mean predicted `recall_prob` per `(scenario_name, brand_name)` and compare to the raw mention rates from `long_df`. Plot predicted vs. observed.
+`run_calibration_check(scenario_recall_df, long_df)` computes mean predicted `recall_prob` per `(scenario_name, brand_name)` and compares to the raw mention rates from `long_df`. Returns a DataFrame with per-cell absolute error and stores overall MAE in `cal_df.attrs["mae"]`.
 
-This check is independent of the ad simulation and can be run immediately on the existing pipeline.
+The calibration scatter (predicted vs. observed) and per-scenario Spearman ρ bars are displayed in the UI Calibration tab.
 
-### 4.4 Construct-validity check (not yet implemented)
+### 4.4 Construct-validity check (implemented — `validator.py: run_spearman_validity`)
 
-For each respondent, rank brands by their predicted recall probability for a given CEP. Rank brands by their total mention count across all *other* CEPs (a proxy for general mental availability, constructed independently of the scored CEP).
+For each scenario, brands are ranked by their predicted population-average recall probability and compared to their observed survey mention rate ranking.
 
 Compute Spearman rank correlation between the two rankings:
 
 ```
-ρ_s(r, c) = Spearman( rank_by_prob(r, c), rank_by_breadth(r, excluding_c) )
+ρ_s(c) = Spearman( rank_by_predicted_prob(c), rank_by_observed_rate(c) )
 ```
 
-**Important caveat:** this is a construct-validity check, not a ground-truth accuracy test. The "breadth ranking" is itself a derived measure, not observed purchase or recall behavior. A high correlation confirms that the model's output is internally consistent with the respondent's broader mental availability pattern — it does not confirm that the model correctly predicts what the respondent would actually think of at the moment of purchase.
+`run_spearman_validity(scenario_recall_df, long_df)` returns a DataFrame of per-scenario ρ values sorted descending. Scenarios with ρ < 0.2 are flagged as candidates for ontology review. The median ρ across scenarios is reported as the **Median Spearman ρ** badge in the UI.
 
-Label it accordingly when presenting results. Report the distribution of ρ_s across respondents and flag CEPs where median ρ_s < 0.2 as potentially misspecified scenarios.
+**Important caveat:** this is a construct-validity check, not a ground-truth accuracy test. The observed mention rate is itself a survey-derived measure, not observed purchase behavior. A high correlation confirms that the model's predicted brand ordering is internally consistent with the survey data — it does not confirm that the model correctly predicts what a consumer would think of at the moment of purchase.
 
-### 4.5 Hold-out test (not yet implemented)
+Label it accordingly when presenting results.
+
+### 4.5 Hold-out test (not yet implemented — future work)
 
 Split respondents 80/20 by `respondent_id` hash (deterministic, reproducible).
 
@@ -315,9 +317,10 @@ None of these parameters are estimated from data. They are set by assumption. Be
 
 The specification above identifies concrete gaps. In priority order:
 
-1. **Implement calibration check (§4.3)** — one new function in `validator.py`, runnable now.
-2. **Fix double-count risk (§3.2)** — decide whether episodic events are additive to weight updates or a replacement. Document the choice.
-3. **Scale initial weights by CEP breadth (§1.4)** — stronger initialisation, one change in `respondent_builder.py`.
-4. **Fit β and γ to observed mention rates (§5)** — simple grid search on calibration MAE. Makes the model defensible.
-5. **Implement construct-validity check (§4.4)** — Spearman ρ between predicted rank and cross-CEP breadth rank; requires a split in the notebook and clear labeling that this is an internal consistency check, not ground-truth accuracy.
+1. ~~**Implement calibration check (§4.3)**~~ — done (`run_calibration_check` in `validator.py`).
+2. ~~**Implement construct-validity check (§4.4)**~~ — done (`run_spearman_validity` in `validator.py`).
+3. **Fix double-count risk (§3.2)** — decide whether episodic events are additive to weight updates or a replacement. Document the choice.
+4. **Scale initial weights by CEP breadth (§1.4)** — stronger initialisation, one change in `respondent_builder.py`.
+5. **Fit β and γ to observed mention rates (§5)** — simple grid search on calibration MAE. Makes the model defensible.
 6. **Add saturation to update rule (§3.3)** — one-line change, prevents unbounded weight growth.
+7. **Hold-out validation (§4.5)** — 80/20 respondent split for held-out calibration and construct-validity.

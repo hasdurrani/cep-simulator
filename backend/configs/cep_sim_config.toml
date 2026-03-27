@@ -1,5 +1,5 @@
 [survey]
-zip_path    = "backend/analysis/cep_sim/data/raw/DYNATA Raw Data CSV for Brazil and UK.zip"
+zip_path    = "backend/data/raw/DYNATA Raw Data CSV for Brazil and UK.zip"
 data_file   = "DYNATA Raw Data CSV for Brazil and UK/Brazil/1301337-data-Stage_3_Brazil_Heineken_Feb_2026-03-26-2026-CX--Default.csv"
 codebook_file = "DYNATA Raw Data CSV for Brazil and UK/Brazil/1301337-Stage_3_Brazil_Heineken_Feb_2026-03-26-2026-CX--Default.txt"
 respondent_id_column = "CID"
@@ -23,5 +23,5 @@ competition_penalty_weight  = 0.05  # penalty per competitor brand
 softmax_temperature         = 1.0   # recall probability sharpness (1=neutral)
 
 [output]
-processed_dir = "backend/analysis/cep_sim/data/processed"
+processed_dir = "backend/data/processed"
 outputs_dir   = "outputs/cep_sim"
