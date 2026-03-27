@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[4]
 
 
 @router.get("/baseline/{session_id}")
-def get_baseline(session_id: str):
+def get_baseline(session_id: str, brand_id: str | None = None):
     from frontend.cep_sim.api import session as session_store
     from backend.service.plotting import (
         plot_brand_situation_heatmap,
@@ -25,6 +25,14 @@ def get_baseline(session_id: str):
     sess = session_store.get(session_id)
     if sess is None:
         raise HTTPException(404, "Session not found. Please run /api/setup first.")
+
+    # Resolve brand for opportunity chart
+    if brand_id is None:
+        if sess.config.ad and sess.config.ad.brand_id:
+            brand_id = sess.config.ad.brand_id
+        else:
+            brand_id = next(iter(sess.brand_name_map), None)
+    brand_name_for_chart = sess.brand_name_map.get(brand_id, brand_id) if brand_id else "Unknown"
 
     out_dir = PROJECT_ROOT / "outputs" / "cep_sim" / "ui_sessions" / session_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -139,6 +147,17 @@ def get_baseline(session_id: str):
 
     artifact_base_url = f"/api/artifacts/{session_id}"
 
+    opportunity_chart_json = None
+    if brand_id:
+        try:
+            from frontend.cep_sim.api.plotly_charts import opportunity_chart
+            opportunity_chart_json = opportunity_chart(
+                sess.scenario_recall_df, brand_id, brand_name_for_chart,
+            )
+        except Exception as _oc_exc:
+            import logging as _log
+            _log.getLogger(__name__).warning("Opportunity chart failed: %s", _oc_exc)
+
     return {
         "session_id": session_id,
         "artifact_base_url": artifact_base_url,
@@ -148,4 +167,7 @@ def get_baseline(session_id: str):
         "respondent_count": respondent_count,
         "brand_count": brand_count,
         "scenario_count": scenario_count,
+        "opportunity_chart": opportunity_chart_json,
+        "opportunity_brand_id": brand_id,
+        "opportunity_brand_name": brand_name_for_chart,
     }

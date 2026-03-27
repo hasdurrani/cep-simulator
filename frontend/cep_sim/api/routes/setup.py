@@ -54,6 +54,8 @@ class SetupResponse(BaseModel):
     default_focal_cep_ids: list[str]
     default_secondary_cep_ids: list[str]
     mae: float | None = None
+    holdout_mae: float | None = None
+    holdout_rho: float | None = None
 
 
 @router.get("/configs")
@@ -123,16 +125,14 @@ def setup(request: SetupRequest):
 
     scenarios = get_scenarios(config.survey.country)
 
-    # Fit softmax temperature and prior weight on a small grid.
-    # γ (competition_penalty_weight) is kept at its config default — it is
-    # currently inert under softmax (cancels out) and will be fitted once the
-    # CEP-similarity competition term is the primary scoring path.
+    # Fit softmax temperature, prior weight, and γ on a small grid.
+    # γ is now meaningful with the CEP-similarity competition term.
     fitted_params = None
     try:
         fitted_params = fit_parameters(
             long_df, rbc_df, cep_master_df, scenarios, config, brand_priors,
             tau_grid=[0.3, 0.7, 1.0, 2.0],
-            gamma_grid=[config.defaults.competition_penalty_weight],
+            gamma_grid=[0.0, 0.05, 0.1, 0.2],
             prior_weight_grid=[0.5, 1.0, 2.0],
         )
         config.defaults.softmax_temperature = fitted_params["tau"]
@@ -159,6 +159,23 @@ def setup(request: SetupRequest):
     except Exception:
         pass
 
+    # ── Hold-out validation ───────────────────────────────────────────
+    holdout_mae = holdout_rho = None
+    try:
+        from backend.service.calibration import make_holdout_split, run_holdout_validation
+        _, holdout_ids = make_holdout_split(respondent_ids)
+        holdout_long = long_df[long_df["respondent_id"].isin(holdout_ids)]
+        holdout_rbc  = rbc_df[rbc_df["respondent_id"].isin(holdout_ids)]
+        holdout_res  = run_holdout_validation(
+            holdout_ids, holdout_long, holdout_rbc,
+            cep_master_df, scenarios, config, brand_priors,
+        )
+        holdout_mae = round(float(holdout_res["mae"]), 4)
+        holdout_rho = round(float(holdout_res["mean_rho"]), 4)
+    except Exception as _hv_exc:
+        import logging as _log
+        _log.getLogger(__name__).warning("Hold-out validation failed (%s) — skipping.", _hv_exc)
+
     # ── Store session ─────────────────────────────────────────────────
     session_id = str(uuid.uuid4())
     sess = session_store.Session(
@@ -178,6 +195,8 @@ def setup(request: SetupRequest):
         brand_similarity=brand_similarity,
         fitted_params=fitted_params,
         mae=mae,
+        holdout_mae=holdout_mae,
+        holdout_rho=holdout_rho,
     )
     session_store.put(sess)
 
@@ -218,4 +237,6 @@ def setup(request: SetupRequest):
         default_focal_cep_ids=default_focal,
         default_secondary_cep_ids=default_secondary,
         mae=mae,
+        holdout_mae=holdout_mae,
+        holdout_rho=holdout_rho,
     )

@@ -26,6 +26,8 @@ class Session:
     brand_similarity: dict | None = None
     fitted_params: dict | None = None
     mae: float | None = None
+    holdout_mae: float | None = None
+    holdout_rho: float | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 

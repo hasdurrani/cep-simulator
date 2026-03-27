@@ -34,7 +34,6 @@ def run_scenario_recall(
     cep_master_df: pd.DataFrame,
     brand_name_map: dict[str, str],
     config: CepSimConfig,
-    episodic_events: pd.DataFrame | None = None,
     brand_priors: dict[str, float] | None = None,
     cep_brand_priors: dict[tuple, float] | None = None,
     brand_similarity: dict[tuple[str, str], float] | None = None,
@@ -48,18 +47,14 @@ def run_scenario_recall(
       3. Cross-join with all respondent_ids so zero-semantic respondents are included.
       4. Add base prior, subtract competition (sum of other brands' semantics × penalty).
       5. Apply per-respondent softmax with configured temperature.
+
+    Note: episodic ad events are not scored here. The updated rbc_post DataFrame
+    (with ad_exposure edges applied by the ad engine) is the authoritative source
+    for ad effects and should be passed directly as rbc_df.
     """
     temperature = config.defaults.softmax_temperature
     base = config.defaults.base_usage_default
     penalty = config.defaults.competition_penalty_weight
-
-    # Double-count guard (once per call, not per respondent)
-    if episodic_events is not None and len(episodic_events) > 0 and "source" in rbc_df.columns:
-        if (rbc_df["source"] == "ad_exposure").any():
-            logger.warning(
-                "run_scenario_recall: rbc_df contains ad_exposure edges AND episodic_events "
-                "are also provided. This may double-count ad effects."
-            )
 
     r_frame = pd.DataFrame({"respondent_id": respondent_ids})
     chunks: list[pd.DataFrame] = []
@@ -90,19 +85,6 @@ def run_scenario_recall(
         cross = r_frame.merge(b_frame, how="cross")
         cross = cross.merge(semantic, on=["respondent_id", "brand_id"], how="left")
         cross["semantic"] = cross["semantic"].fillna(0.0)
-
-        # Episodic boost
-        if episodic_events is not None and len(episodic_events) > 0:
-            ep = (
-                episodic_events[episodic_events["cep_id"].isin(active_cep_ids)]
-                .groupby(["respondent_id", "brand_id"])["strength"]
-                .sum()
-                .reset_index()
-            )
-            cross = cross.merge(ep, on=["respondent_id", "brand_id"], how="left")
-            cross["strength"] = cross["strength"].fillna(0.0)
-            cross["semantic"] += cross["strength"]
-            cross = cross.drop(columns=["strength"])
 
         # Competition
         if brand_similarity is not None:

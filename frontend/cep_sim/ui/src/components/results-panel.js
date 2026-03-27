@@ -187,15 +187,16 @@ function RecallHeatmap({ matrix }) {
 // ── Market tab ────────────────────────────────────────────────────────────
 
 function MarketTab({ session }) {
-  const [baselineData, setBaselineData] = useState(null);
-  const [loading,      setLoading]      = useState(false);
-  const [error,        setError]        = useState(null);
+  const [baselineData,    setBaselineData]    = useState(null);
+  const [loading,         setLoading]         = useState(false);
+  const [error,           setError]           = useState(null);
+  const [selectedBrandId, setSelectedBrandId] = useState(null);
 
   useEffect(() => {
     if (!session) return;
     setLoading(true);
     setError(null);
-    api.baseline(session.session_id)
+    api.baseline(session.session_id, selectedBrandId)
       .then(data => {
         setBaselineData(data);
         setLoading(false);
@@ -204,7 +205,7 @@ function MarketTab({ session }) {
         setError(err.message || "Failed to load baseline data");
         setLoading(false);
       });
-  }, [session && session.session_id]);
+  }, [session && session.session_id, selectedBrandId]);
 
   if (loading) {
     return html`
@@ -248,6 +249,25 @@ function MarketTab({ session }) {
         ${baselineData.brand_scenario_matrix
           ? html`<${RecallHeatmap} matrix=${baselineData.brand_scenario_matrix} />`
           : html`<p class="text-slate-500 text-sm">No matrix data</p>`
+        }
+      </div>
+
+      <!-- CEP Opportunity Map -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">CEP Opportunity Map</h3>
+          <select
+            value=${selectedBrandId || (baselineData.opportunity_brand_id || "")}
+            onChange=${e => setSelectedBrandId(e.target.value)}
+            class="text-xs px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300">
+            ${session.brands
+              ? session.brands.map(b => html`<option key=${b.brand_id} value=${b.brand_id}>${b.brand_name}</option>`)
+              : null}
+          </select>
+        </div>
+        ${baselineData.opportunity_chart
+          ? html`<${PlotlyChart} spec=${baselineData.opportunity_chart} />`
+          : html`<p class="text-slate-500 text-sm italic">No opportunity data</p>`
         }
       </div>
 

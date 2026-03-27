@@ -308,3 +308,84 @@ def calibration_chart(
         height=720 if has_spearman else 460,
     )
     return fig.to_json()
+
+
+def opportunity_chart(scenario_recall_df: pd.DataFrame, brand_id: str, brand_name: str) -> str:
+    """
+    CEP Opportunity Map: for each scenario, brand recall vs category average.
+    Bars show gap (brand − category avg). Green = above average, red = below.
+    """
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    # Population-average recall per scenario (category benchmark)
+    cat_avg = (
+        scenario_recall_df
+        .groupby("scenario_name")["recall_prob"]
+        .mean()
+        .rename("cat_avg")
+    )
+
+    # Brand recall per scenario
+    brand_recall = (
+        scenario_recall_df[scenario_recall_df["brand_id"] == brand_id]
+        .groupby("scenario_name")["recall_prob"]
+        .mean()
+        .rename("brand_recall")
+    )
+
+    df = pd.concat([cat_avg, brand_recall], axis=1).dropna(subset=["brand_recall"]).reset_index()
+    df["gap"] = df["brand_recall"] - df["cat_avg"]
+    df = df.sort_values("gap")
+
+    colors = ["#ef4444" if g < 0 else "#22c55e" for g in df["gap"]]
+    labels = df["scenario_name"].str.replace("_", " ")
+
+    fig = go.Figure(go.Bar(
+        x=(df["gap"] * 100).round(2),
+        y=labels,
+        orientation="h",
+        marker_color=colors,
+        text=[f"{g:+.1f}pp" for g in (df["gap"] * 100)],
+        textposition="outside",
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            f"{brand_name}: %{{customdata[0]:.1f}}%<br>"
+            "Category avg: %{customdata[1]:.1f}%<br>"
+            "Gap: %{x:+.1f}pp<extra></extra>"
+        ),
+        customdata=list(zip(df["brand_recall"] * 100, df["cat_avg"] * 100)),
+    ))
+
+    max_abs = max(abs(df["gap"] * 100).max(), 1.0)
+
+    fig.add_vline(x=0, line_width=1, line_color="#64748b")
+
+    fig.update_layout(
+        paper_bgcolor="#0f172a",
+        plot_bgcolor="#1e293b",
+        font=dict(color="#94a3b8", size=11),
+        margin=dict(l=10, r=60, t=40, b=10),
+        height=max(300, len(df) * 28 + 60),
+        title=dict(
+            text=f"<b>{brand_name}</b> — CEP opportunity map",
+            font=dict(color="#f1f5f9", size=13),
+            x=0,
+        ),
+        xaxis=dict(
+            title="Gap vs category average (pp)",
+            gridcolor="#1e293b",
+            zerolinecolor="#475569",
+            ticksuffix="pp",
+            range=[-(max_abs * 1.3), max_abs * 1.3],
+            tickfont=dict(color="#64748b"),
+            title_font=dict(color="#64748b"),
+        ),
+        yaxis=dict(
+            gridcolor="#1e293b",
+            tickfont=dict(color="#94a3b8"),
+        ),
+        showlegend=False,
+    )
+
+    return pio.to_json(fig)
